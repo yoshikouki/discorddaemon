@@ -28,6 +28,9 @@ export async function executeHook(
 
   const exitCode = await proc.exited;
   signal?.removeEventListener("abort", onAbort);
+  // Both timeout and AbortSignal kill set signalCode; we check signal.aborted
+  // to distinguish them. If both fire simultaneously, timedOut may be false,
+  // which is acceptable since this only affects logging.
   const timedOut = proc.signalCode !== null && !signal?.aborted;
   const killed = proc.signalCode !== null;
 
