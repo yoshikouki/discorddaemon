@@ -1,92 +1,45 @@
-type TomlTable = Record<string, string | TomlTable>;
+const SECTION_RE = /^\[([^\]]+)\]$/;
+const KV_RE = /^([A-Za-z0-9_-]+)\s*=\s*"([^"]*)"$/;
 
-const NEWLINE_RE = /\r?\n/u;
-const TABLE_RE = /^\[(.+)\]$/u;
-const KEY_VALUE_RE = /^([A-Za-z0-9_-]+)\s*=\s*"(.*)"$/u;
+/**
+ * Minimal TOML parser — string values only, sections, comments.
+ * Returns Record<section, Record<key, value>>.
+ * Top-level keys go under the "" section.
+ */
+export function parseTOML(
+  input: string
+): Record<string, Record<string, string>> {
+  const result: Record<string, Record<string, string>> = {};
+  let currentSection = "";
 
-function stripComment(line: string): string {
-  let inString = false;
+  for (const raw of input.split("\n")) {
+    const line = raw.trim();
 
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-
-    if (char === '"' && line[index - 1] !== "\\") {
-      inString = !inString;
-    }
-
-    if (char === "#" && !inString) {
-      return line.slice(0, index).trim();
-    }
-  }
-
-  return line.trim();
-}
-
-function unescapeTomlString(value: string): string {
-  return value.replace(/\\(["\\])/g, "$1");
-}
-
-function getOrCreateTable(root: TomlTable, path: string[]): TomlTable {
-  let current = root;
-
-  for (const segment of path) {
-    const existing = current[segment];
-
-    if (existing === undefined) {
-      const next: TomlTable = {};
-      current[segment] = next;
-      current = next;
+    if (line === "" || line.startsWith("#")) {
       continue;
     }
 
-    if (typeof existing === "string") {
-      throw new Error(`Invalid TOML: "${segment}" is already a value.`);
-    }
-
-    current = existing;
-  }
-
-  return current;
-}
-
-export function parseToml(source: string): TomlTable {
-  const root: TomlTable = {};
-  let currentTable = root;
-
-  for (const [lineNumber, rawLine] of source.split(NEWLINE_RE).entries()) {
-    const line = stripComment(rawLine);
-
-    if (!line) {
+    const sectionMatch = line.match(SECTION_RE);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1] ?? "";
+      result[currentSection] ??= {};
       continue;
     }
 
-    const tableMatch = line.match(TABLE_RE);
-    if (tableMatch) {
-      const path = tableMatch[1]
-        .split(".")
-        .map((segment) => segment.trim())
-        .filter(Boolean);
-
-      if (path.length === 0) {
-        throw new Error(
-          `Invalid TOML on line ${lineNumber + 1}: empty table name.`
-        );
+    const kvMatch = line.match(KV_RE);
+    if (kvMatch) {
+      const key = kvMatch[1] ?? "";
+      const value = kvMatch[2] ?? "";
+      result[currentSection] ??= {};
+      const section = result[currentSection];
+      if (section) {
+        section[key] = value;
       }
-
-      currentTable = getOrCreateTable(root, path);
       continue;
     }
 
-    const keyValueMatch = line.match(KEY_VALUE_RE);
-    if (!keyValueMatch) {
-      throw new Error(
-        `Invalid TOML on line ${lineNumber + 1}: expected key = "value".`
-      );
-    }
-
-    const [, key, rawValue] = keyValueMatch;
-    currentTable[key] = unescapeTomlString(rawValue);
+    throw new Error(`Invalid TOML line: ${line}`);
   }
 
-  return root;
+  return result;
 }

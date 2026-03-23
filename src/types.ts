@@ -1,40 +1,39 @@
-/** Channel configuration from ddd.toml */
 export interface ChannelConfig {
   id: string;
+  name: string;
   on_message: string;
 }
 
-/** Top-level ddd.toml structure */
 export interface Config {
-  bot: {
-    token: string;
-  };
-  channels: Record<string, ChannelConfig>;
+  channels: Map<string, ChannelConfig>;
+  token: string;
 }
 
-/** JSON payload passed to hook stdin */
 export interface HookInput {
-  attachments: {
+  message: {
     id: string;
-    filename: string;
-    url: string;
-    size: number;
-  }[];
-  author: {
-    id: string;
-    username: string;
-    bot: boolean;
+    content: string;
+    author: {
+      id: string;
+      username: string;
+      bot: boolean;
+    };
+    channel: {
+      id: string;
+      name: string | null;
+    };
+    guild: {
+      id: string;
+      name: string;
+    } | null;
+    timestamp: string;
   };
-  channel_id: string;
-  channel_name: string;
-  content: string;
-  id: string;
-  timestamp: string;
 }
 
-/** Result from hook execution */
 export interface HookResult {
+  error: string;
   exitCode: number;
   output: string;
   success: boolean;
+  timedOut: boolean;
 }
