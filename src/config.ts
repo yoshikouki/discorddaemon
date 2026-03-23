@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parse } from "smol-toml";
+import { parseToml } from "./toml.ts";
 import type { Config } from "./types.ts";
 
 const DEFAULT_CONFIG_PATH = "ddd.toml";
@@ -13,7 +13,7 @@ export function loadConfig(configPath?: string): Config {
     }
 
     const raw = readFileSync(filePath, "utf-8");
-    const parsed = parse(raw);
+    const parsed = parseToml(raw);
 
     const token =
         (parsed.bot as Record<string, unknown>)?.token ?? process.env.DDD_TOKEN;
