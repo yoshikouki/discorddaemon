@@ -1,10 +1,8 @@
 # Design Decisions
 
-## No external TOML/CLI libraries
+## Minimal dependencies
 
-ddd's only runtime dependency is discord.js. The TOML parser and CLI argument parser are hand-rolled — not because NIH, but because ddd.toml is flat key-value pairs and the CLI surface is small. Adding a library would increase the dependency surface for negligible gain.
-
-If the config format or CLI complexity outgrows the hand-rolled implementations, this decision should be revisited.
+ddd's only runtime dependency is discord.js. TOML parsing uses Bun's built-in `Bun.TOML.parse()` and CLI argument parsing uses Node.js's built-in `node:util` `parseArgs`. No external libraries for either — the runtime provides everything needed.
 
 ## CLI designed for AI agents
 

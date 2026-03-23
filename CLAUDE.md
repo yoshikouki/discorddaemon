@@ -8,9 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 bun install              # Install dependencies
 bun run start            # Start daemon (reads ddd.toml)
 bun run dev              # Start with --watch for development
-bun run test             # Run all tests (vitest)
-bun run test:coverage    # Run tests with coverage report
-bunx vitest run src/cli.test.ts  # Run a single test file
+bun test                 # Run all tests (bun:test)
+bun test src/hook.test.ts  # Run a single test file
 bun run check            # Lint/format check (ultracite + biome v2)
 bun run fix              # Auto-fix lint/format issues
 ```
@@ -23,13 +22,13 @@ discorddaemon (ddd) is a Discord bot daemon that routes channel messages to exte
 
 ### Key modules
 
-- **`src/index.ts`** — Entrypoint and CLI dispatcher. Parses args, loads config, creates daemon, installs signal handlers.
-- **`src/daemon.ts`** — Discord.js client. Builds a channel ID → config lookup map, listens for `MessageCreate`, invokes hooks, sends replies.
-- **`src/hooks.ts`** — Hook executor. Spawns hook as a subprocess via `Bun.spawn()`, pipes JSON to stdin, reads stdout/stderr, enforces 30s timeout.
-- **`src/config.ts`** — Loads and validates `ddd.toml`. Falls back to `DDD_TOKEN` env var for the bot token.
-- **`src/toml.ts`** — Minimal hand-written TOML parser (string values only, no arrays/numbers/booleans). Sufficient for ddd.toml's flat structure.
+- **`src/index.ts`** — CLI entrypoint. Parses args via `node:util` `parseArgs`, dispatches to commands.
+- **`src/commands/start.ts`** — `ddd start [-c path]`. Loads config, creates daemon, installs signal handlers.
+- **`src/commands/init.ts`** — `ddd init`. Scaffolds `ddd.toml` and `hooks/echo.sh`.
+- **`src/daemon.ts`** — Discord.js Client lifecycle. Listens for `MessageCreate`, routes by channel ID, invokes hooks, sends replies.
+- **`src/hook.ts`** — Hook executor. `Bun.spawn()` with native `timeout` and `AbortSignal` support.
+- **`src/config.ts`** — Loads `ddd.toml` via `Bun.file()` + `Bun.TOML.parse()`. Falls back to `DDD_TOKEN` env var.
 - **`src/types.ts`** — Shared interfaces: `Config`, `ChannelConfig`, `HookInput`, `HookResult`.
-- **`src/cli.ts`** — CLI argument parser using `node:util` `parseArgs`. Commands: `start [-c path]`, `init`.
 
 ### Config format (ddd.toml)
 
@@ -48,8 +47,8 @@ Hooks are any executable. They receive a JSON message object on stdin and write 
 
 ## Conventions
 
-- **Bun runtime** — No Node.js or npm. Use `Bun.spawn`, `Bun.file`, etc.
+- **Bun runtime** — No Node.js or npm. Use `Bun.spawn`, `Bun.file`, `Bun.TOML.parse`, etc.
 - **Ultracite + Biome v2** for linting/formatting — 2-space indent, double quotes. Pre-commit hook runs tests and auto-fixes.
-- **No external TOML/CLI libraries** — Both are hand-rolled to keep dependencies minimal (only `discord.js`).
-- **Test files** live alongside source as `*.test.ts`, using `vitest`.
+- **Minimal dependencies** — Only runtime dependency is `discord.js`. TOML parsing uses `Bun.TOML.parse()`.
+- **Test files** live alongside source as `*.test.ts`, using `bun:test`.
 - **Logging** goes to stderr with `[ddd]` or `[hook]` prefix. Stdout is reserved for hook output.
