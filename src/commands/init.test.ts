@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initCommand } from "./init";
@@ -38,5 +38,19 @@ describe("initCommand", () => {
     await initCommand();
     const entries = await readdir(join(dir, "hooks"));
     expect(entries).toContain("echo.sh");
+  });
+
+  test("does not overwrite existing hooks/echo.sh", async () => {
+    const hooksDir = join(dir, "hooks");
+    await mkdir(hooksDir, { recursive: true });
+    const hookPath = join(hooksDir, "echo.sh");
+    const customContent = "#!/bin/sh\necho custom\n";
+    await Bun.write(hookPath, customContent);
+    await chmod(hookPath, 0o755);
+
+    await initCommand();
+
+    const content = await Bun.file(hookPath).text();
+    expect(content).toBe(customContent);
   });
 });

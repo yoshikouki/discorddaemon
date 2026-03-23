@@ -32,9 +32,14 @@ export async function initCommand(): Promise<void> {
   console.error("[ddd] Created hooks/");
 
   const hookPath = join(hooksDir, "echo.sh");
-  await Bun.write(hookPath, TEMPLATE_HOOK);
-  await chmod(hookPath, 0o755);
-  console.error("[ddd] Created hooks/echo.sh");
+  const hookFile = Bun.file(hookPath);
+  if (await hookFile.exists()) {
+    console.error("[ddd] hooks/echo.sh already exists, skipping");
+  } else {
+    await Bun.write(hookPath, TEMPLATE_HOOK);
+    await chmod(hookPath, 0o755);
+    console.error("[ddd] Created hooks/echo.sh");
+  }
 
   console.error("\n[ddd] Ready! Edit ddd.toml, then run: ddd start");
 }
