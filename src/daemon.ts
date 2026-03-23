@@ -1,7 +1,13 @@
 import type { Message } from "discord.js";
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { executeHook } from "./hook";
-import type { Config, HookInput } from "./types";
+import type { Config, HookInput, HookResult } from "./types";
+
+export type HookExecutor = (
+  scriptPath: string,
+  input: HookInput,
+  options?: { timeout?: number; signal?: AbortSignal }
+) => Promise<HookResult>;
 
 function log(msg: string): void {
   console.error(`[ddd] ${msg}`);
@@ -33,9 +39,11 @@ export class Daemon {
   private readonly client: Client;
   private readonly config: Config;
   private readonly abortController: AbortController;
+  private readonly hookExecutor: HookExecutor;
 
-  constructor(config: Config) {
+  constructor(config: Config, hookExecutor?: HookExecutor) {
     this.config = config;
+    this.hookExecutor = hookExecutor ?? executeHook;
     this.abortController = new AbortController();
     this.client = new Client({
       intents: [
@@ -88,13 +96,9 @@ export class Daemon {
 
   private async runHook(message: Message, scriptPath: string): Promise<void> {
     const input = buildHookInput(message);
-    const result = await executeHook(scriptPath, input, {
+    const result = await this.hookExecutor(scriptPath, input, {
       signal: this.abortController.signal,
     });
-
-    if (result.error) {
-      log(`[hook] stderr: ${result.error}`);
-    }
 
     if (result.timedOut) {
       log(`[hook] Timed out: ${scriptPath}`);
@@ -102,12 +106,20 @@ export class Daemon {
     }
 
     if (!result.success) {
+      if (result.error) {
+        log(`[hook] stderr: ${result.error}`);
+      }
       log(`[hook] Exit code ${result.exitCode}: ${scriptPath}`);
       return;
     }
 
     if (result.output) {
-      await message.reply(result.output);
+      try {
+        await message.reply(result.output);
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        log(`[hook] Failed to send reply: ${errMsg}`);
+      }
     }
   }
 }
