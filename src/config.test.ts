@@ -122,6 +122,46 @@ id = "111"
     );
   });
 
+  test("loads with [bot] section omitted when DDD_TOKEN is set", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "env-token";
+    try {
+      const path = await writeConfig(`
+[channels.general]
+id = "111"
+on_message = "./hooks/echo.sh"
+`);
+      const config = await loadConfig(path);
+      expect(config.token).toBe("env-token");
+      expect(config.channels.size).toBe(1);
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
+  });
+
+  test("loads with no channels defined", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+`);
+    const config = await loadConfig(path);
+    expect(config.token).toBe("tok");
+    expect(config.channels.size).toBe(0);
+  });
+
+  test("loads empty TOML file with only DDD_TOKEN", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "env-token";
+    try {
+      const path = await writeConfig("");
+      const config = await loadConfig(path);
+      expect(config.token).toBe("env-token");
+      expect(config.channels.size).toBe(0);
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
+  });
+
   test("loads multiple channels", async () => {
     const path = await writeConfig(`
 [bot]
