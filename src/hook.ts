@@ -16,18 +16,23 @@ export async function executeHook(
     stdout: "pipe",
     stderr: "pipe",
     timeout,
-    signal: options?.signal,
   });
+
+  const signal = options?.signal;
+  const onAbort = () => proc.kill();
+  signal?.addEventListener("abort", onAbort);
 
   const json = JSON.stringify(input);
   proc.stdin.write(json);
   proc.stdin.end();
 
   const exitCode = await proc.exited;
-  const timedOut = proc.signalCode !== null;
+  signal?.removeEventListener("abort", onAbort);
+  const timedOut = proc.signalCode !== null && !signal?.aborted;
+  const killed = proc.signalCode !== null;
 
-  const output = timedOut ? "" : await new Response(proc.stdout).text();
-  const error = timedOut ? "" : await new Response(proc.stderr).text();
+  const output = killed ? "" : await new Response(proc.stdout).text();
+  const error = killed ? "" : await new Response(proc.stderr).text();
 
   return {
     success: exitCode === 0,

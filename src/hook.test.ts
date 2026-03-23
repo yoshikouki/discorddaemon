@@ -54,8 +54,16 @@ describe("executeHook", () => {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 50);
     const result = await executeHook(join(fixturesDir, "slow.sh"), dummyInput, {
+      timeout: 5000,
       signal: controller.signal,
     });
     expect(result.success).toBe(false);
+    expect(result.timedOut).toBe(false);
+  });
+
+  test("throws for non-existent script path", async () => {
+    await expect(
+      executeHook(join(fixturesDir, "nonexistent.sh"), dummyInput)
+    ).rejects.toThrow();
   });
 });
