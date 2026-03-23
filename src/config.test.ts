@@ -78,8 +78,8 @@ on_message = "./hooks/echo.sh"
     }
   });
 
-  test("throws if config file not found", () => {
-    expect(loadConfig(join(dir, "missing.toml"))).rejects.toThrow(
+  test("throws if config file not found", async () => {
+    await expect(loadConfig(join(dir, "missing.toml"))).rejects.toThrow(
       "Config file not found"
     );
   });
@@ -92,7 +92,7 @@ on_message = "./hooks/echo.sh"
 [bot]
 token = ""
 `);
-      expect(loadConfig(path)).rejects.toThrow("Bot token is required");
+      await expect(loadConfig(path)).rejects.toThrow("Bot token is required");
     } finally {
       process.env.DDD_TOKEN = original;
     }
@@ -106,7 +106,9 @@ token = "tok"
 [channels.broken]
 on_message = "./hooks/echo.sh"
 `);
-    expect(loadConfig(path)).rejects.toThrow("missing required field: id");
+    await expect(loadConfig(path)).rejects.toThrow(
+      "missing required field: id"
+    );
   });
 
   test("throws if channel missing on_message", async () => {
@@ -117,7 +119,7 @@ token = "tok"
 [channels.broken]
 id = "111"
 `);
-    expect(loadConfig(path)).rejects.toThrow(
+    await expect(loadConfig(path)).rejects.toThrow(
       "missing required field: on_message"
     );
   });
