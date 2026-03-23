@@ -9,6 +9,7 @@ bun install              # Install dependencies
 bun run start            # Start daemon (reads ddd.toml)
 bun run dev              # Start with --watch for development
 bun run test             # Run all tests (vitest)
+bun run test:coverage    # Run tests with coverage report
 bunx vitest run src/cli.test.ts  # Run a single test file
 bun run lint             # Lint with Biome
 bun run format           # Auto-fix lint/format with Biome
