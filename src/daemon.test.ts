@@ -84,7 +84,7 @@ describe("buildHookInput", () => {
 });
 
 describe("Daemon.handleMessage", () => {
-  test("skips bot messages", async () => {
+  test("skips bot messages", () => {
     const executor = mock(() => Promise.resolve(successResult()));
     const config = makeConfig(makeChannelMap(defaultChannel));
     const daemon = new Daemon(config, executor);
@@ -92,24 +92,17 @@ describe("Daemon.handleMessage", () => {
     const msg = fakeMessage({
       author: { id: "bot-1", username: "bot", bot: true },
     });
-    // handleMessage is private, so we trigger it via the internal method
-    // Access private method for testing
     (daemon as any).handleMessage(msg);
-
-    // Give microtasks a chance to run
-    await new Promise((r) => setTimeout(r, 10));
     expect(executor).not.toHaveBeenCalled();
   });
 
-  test("ignores messages from unconfigured channels", async () => {
+  test("ignores messages from unconfigured channels", () => {
     const executor = mock(() => Promise.resolve(successResult()));
     const config = makeConfig(makeChannelMap(defaultChannel));
     const daemon = new Daemon(config, executor);
 
     const msg = fakeMessage({ channelId: "unknown-channel" });
     (daemon as any).handleMessage(msg);
-
-    await new Promise((r) => setTimeout(r, 10));
     expect(executor).not.toHaveBeenCalled();
   });
 });
