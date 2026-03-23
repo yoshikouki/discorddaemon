@@ -1,50 +1,50 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { parseToml } from "./toml.ts";
-import type { Config } from "./types.ts";
+import { parseTOML } from "./toml";
+import type { ChannelConfig, Config } from "./types";
 
-const DEFAULT_CONFIG_PATH = "ddd.toml";
+const CHANNELS_PREFIX = "channels.";
 
-export function loadConfig(configPath?: string): Config {
-  const filePath = resolve(configPath ?? DEFAULT_CONFIG_PATH);
+export function parseConfig(text: string, envToken?: string): Config {
+  const parsed = parseTOML(text);
 
-  if (!existsSync(filePath)) {
-    throw new Error(`Config file not found: ${filePath}`);
-  }
-
-  const raw = readFileSync(filePath, "utf-8");
-  const parsed = parseToml(raw);
-
-  const token =
-    (parsed.bot as Record<string, unknown>)?.token ?? process.env.DDD_TOKEN;
-
-  if (!token || typeof token !== "string") {
+  const token = parsed.bot?.token || envToken;
+  if (!token) {
     throw new Error(
-      "Bot token is required. Set [bot].token in ddd.toml or DDD_TOKEN env var."
+      "Bot token is required: set [bot] token in ddd.toml or DDD_TOKEN env var"
     );
   }
 
-  const channels: Config["channels"] = {};
-  const rawChannels = parsed.channels as
-    | Record<string, Record<string, unknown>>
-    | undefined;
+  const channels = new Map<string, ChannelConfig>();
 
-  if (rawChannels) {
-    for (const [name, ch] of Object.entries(rawChannels)) {
-      if (typeof ch.id !== "string" || typeof ch.on_message !== "string") {
-        throw new Error(
-          `Invalid channel config for "${name}": id and on_message are required strings.`
-        );
-      }
-      channels[name] = {
-        id: ch.id,
-        on_message: ch.on_message,
-      };
+  for (const [section, values] of Object.entries(parsed)) {
+    if (!section.startsWith(CHANNELS_PREFIX)) {
+      continue;
     }
+
+    const name = section.slice(CHANNELS_PREFIX.length);
+    const id = values?.id;
+    const onMessage = values?.on_message;
+
+    if (!id) {
+      throw new Error(`Channel "${name}" is missing required field: id`);
+    }
+    if (!onMessage) {
+      throw new Error(
+        `Channel "${name}" is missing required field: on_message`
+      );
+    }
+
+    channels.set(id, { id, name, on_message: onMessage });
   }
 
-  return {
-    bot: { token: token as string },
-    channels,
-  };
+  return { token, channels };
+}
+
+export async function loadConfig(path = "./ddd.toml"): Promise<Config> {
+  const file = Bun.file(path);
+  if (!(await file.exists())) {
+    throw new Error(`Config file not found: ${path}`);
+  }
+
+  const text = await file.text();
+  return parseConfig(text, process.env.DDD_TOKEN);
 }
