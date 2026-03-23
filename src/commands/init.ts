@@ -20,8 +20,7 @@ export async function initCommand(): Promise<void> {
   const configFile = Bun.file(configPath);
 
   if (await configFile.exists()) {
-    console.error("[ddd] ddd.toml already exists");
-    process.exit(1);
+    throw new Error("ddd.toml already exists");
   }
 
   await Bun.write(configPath, TEMPLATE_CONFIG);

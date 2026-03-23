@@ -40,6 +40,11 @@ describe("initCommand", () => {
     expect(entries).toContain("echo.sh");
   });
 
+  test("throws if ddd.toml already exists", async () => {
+    await Bun.write(join(dir, "ddd.toml"), "existing");
+    await expect(initCommand()).rejects.toThrow("ddd.toml already exists");
+  });
+
   test("does not overwrite existing hooks/echo.sh", async () => {
     const hooksDir = join(dir, "hooks");
     await mkdir(hooksDir, { recursive: true });
