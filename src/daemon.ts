@@ -90,7 +90,7 @@ export class Daemon {
 
     this.runHook(message, channelConfig.on_message).catch((err: unknown) => {
       const errMsg = err instanceof Error ? err.message : String(err);
-      log(`Hook error in #${channelConfig.name}: ${errMsg}`);
+      console.error(`[hook] Error in #${channelConfig.name}: ${errMsg}`);
     });
   }
 
@@ -101,15 +101,15 @@ export class Daemon {
     });
 
     if (result.timedOut) {
-      log(`[hook] Timed out: ${scriptPath}`);
+      console.error(`[hook] Timed out: ${scriptPath}`);
       return;
     }
 
     if (!result.success) {
       if (result.error) {
-        log(`[hook] stderr: ${result.error}`);
+        console.error(`[hook] stderr: ${result.error}`);
       }
-      log(`[hook] Exit code ${result.exitCode}: ${scriptPath}`);
+      console.error(`[hook] Exit code ${result.exitCode}: ${scriptPath}`);
       return;
     }
 
@@ -118,7 +118,7 @@ export class Daemon {
         await message.reply(result.output);
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        log(`[hook] Failed to send reply: ${errMsg}`);
+        console.error(`[hook] Failed to send reply: ${errMsg}`);
       }
     }
   }
