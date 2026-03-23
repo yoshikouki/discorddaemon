@@ -7,7 +7,7 @@ export async function startCommand(args: { config?: string }): Promise<void> {
 
   const shutdown = () => {
     daemon.stop();
-    setTimeout(() => process.exit(0), 100);
+    process.exit(0);
   };
 
   process.on("SIGINT", shutdown);
