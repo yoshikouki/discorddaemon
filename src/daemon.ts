@@ -1,76 +1,113 @@
 import type { Message } from "discord.js";
 import { Client, Events, GatewayIntentBits } from "discord.js";
-import { executeHook } from "./hooks.ts";
-import type { ChannelConfig, HookInput } from "./types.ts";
+import { executeHook } from "./hook";
+import type { Config, HookInput } from "./types";
 
-export function createDaemon(
-  token: string,
-  channels: Record<string, ChannelConfig>
-) {
-  const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.MessageContent,
-    ],
-  });
+function log(msg: string): void {
+  console.error(`[ddd] ${msg}`);
+}
 
-  // Build channel ID → config lookup
-  const channelMap = new Map<string, ChannelConfig & { name: string }>();
-  for (const [name, config] of Object.entries(channels)) {
-    channelMap.set(config.id, { ...config, name });
-  }
-
-  client.once(Events.ClientReady, (c) => {
-    console.error(`[ddd] Logged in as ${c.user.tag}`);
-    console.error(`[ddd] Watching ${channelMap.size} channel(s)`);
-  });
-
-  client.on(Events.MessageCreate, async (message: Message) => {
-    // Ignore bot messages
-    if (message.author.bot) {
-      return;
-    }
-
-    const channelConfig = channelMap.get(message.channelId);
-    if (!channelConfig) {
-      return;
-    }
-
-    const hookInput: HookInput = {
+export function buildHookInput(message: Message): HookInput {
+  return {
+    message: {
       id: message.id,
-      channel_id: message.channelId,
-      channel_name: channelConfig.name,
+      content: message.content,
       author: {
         id: message.author.id,
         username: message.author.username,
         bot: message.author.bot,
       },
-      content: message.content,
+      channel: {
+        id: message.channelId,
+        name: "name" in message.channel ? message.channel.name : null,
+      },
+      guild: message.guild
+        ? { id: message.guild.id, name: message.guild.name }
+        : null,
       timestamp: message.createdAt.toISOString(),
-      attachments: message.attachments.map((a) => ({
-        id: a.id,
-        filename: a.name,
-        url: a.url,
-        size: a.size,
-      })),
-    };
-
-    const result = await executeHook(channelConfig.on_message, hookInput);
-
-    if (result.success && result.output) {
-      try {
-        await message.reply(result.output);
-      } catch (err) {
-        console.error(
-          `[ddd] Failed to reply in #${channelConfig.name}: ${err}`
-        );
-      }
-    }
-  });
-
-  return {
-    start: () => client.login(token),
-    stop: () => client.destroy(),
+    },
   };
+}
+
+export class Daemon {
+  private readonly client: Client;
+  private readonly config: Config;
+  private readonly abortController: AbortController;
+
+  constructor(config: Config) {
+    this.config = config;
+    this.abortController = new AbortController();
+    this.client = new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+      ],
+    });
+  }
+
+  async start(): Promise<void> {
+    this.client.once(Events.ClientReady, (c) => {
+      log(`Logged in as ${c.user.tag}`);
+      log(`Watching ${this.config.channels.size} channel(s)`);
+    });
+
+    this.client.on(Events.MessageCreate, (message) => {
+      this.handleMessage(message);
+    });
+
+    this.client.on(Events.Error, (error) => {
+      log(`Client error: ${error.message}`);
+    });
+
+    await this.client.login(this.config.token);
+  }
+
+  stop(): void {
+    log("Shutting down...");
+    this.abortController.abort();
+    this.client.destroy();
+    log("Stopped");
+  }
+
+  private handleMessage(message: Message): void {
+    if (message.author.bot) {
+      return;
+    }
+
+    const channelConfig = this.config.channels.get(message.channelId);
+    if (!channelConfig) {
+      return;
+    }
+
+    this.runHook(message, channelConfig.on_message).catch((err: unknown) => {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      log(`Hook error in #${channelConfig.name}: ${errMsg}`);
+    });
+  }
+
+  private async runHook(message: Message, scriptPath: string): Promise<void> {
+    const input = buildHookInput(message);
+    const result = await executeHook(scriptPath, input, {
+      signal: this.abortController.signal,
+    });
+
+    if (result.error) {
+      log(`[hook] stderr: ${result.error}`);
+    }
+
+    if (result.timedOut) {
+      log(`[hook] Timed out: ${scriptPath}`);
+      return;
+    }
+
+    if (!result.success) {
+      log(`[hook] Exit code ${result.exitCode}: ${scriptPath}`);
+      return;
+    }
+
+    if (result.output) {
+      await message.reply(result.output);
+    }
+  }
 }
