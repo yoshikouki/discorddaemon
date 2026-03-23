@@ -1,5 +1,5 @@
+import { describe, expect, test } from "bun:test";
 import type { Message } from "discord.js";
-import { describe, expect, test } from "vitest";
 import { buildHookInput } from "./daemon";
 
 function fakeMessage(

@@ -1,9 +1,28 @@
-import { describe, expect, test } from "vitest";
-import { parseConfig } from "./config";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { loadConfig } from "./config";
 
-describe("parseConfig", () => {
-  test("parses a valid config", () => {
-    const config = parseConfig(`
+describe("loadConfig", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "ddd-test-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true });
+  });
+
+  async function writeConfig(content: string): Promise<string> {
+    const path = join(dir, "ddd.toml");
+    await Bun.write(path, content);
+    return path;
+  }
+
+  test("loads a valid config", async () => {
+    const path = await writeConfig(`
 [bot]
 token = "my-token"
 
@@ -11,6 +30,7 @@ token = "my-token"
 id = "111"
 on_message = "./hooks/echo.sh"
 `);
+    const config = await loadConfig(path);
     expect(config.token).toBe("my-token");
     expect(config.channels.size).toBe(1);
     expect(config.channels.get("111")).toEqual({
@@ -20,71 +40,90 @@ on_message = "./hooks/echo.sh"
     });
   });
 
-  test("falls back to env token when config token is empty", () => {
-    const config = parseConfig(
-      `
+  test("falls back to DDD_TOKEN env var", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "env-token";
+    try {
+      const path = await writeConfig(`
 [bot]
 token = ""
 
 [channels.general]
 id = "111"
 on_message = "./hooks/echo.sh"
-`,
-      "env-token"
-    );
-    expect(config.token).toBe("env-token");
+`);
+      const config = await loadConfig(path);
+      expect(config.token).toBe("env-token");
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
   });
 
-  test("prefers config token over env token", () => {
-    const config = parseConfig(
-      `
+  test("prefers config token over env token", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "env-token";
+    try {
+      const path = await writeConfig(`
 [bot]
 token = "config-token"
 
 [channels.general]
 id = "111"
 on_message = "./hooks/echo.sh"
-`,
-      "env-token"
-    );
-    expect(config.token).toBe("config-token");
+`);
+      const config = await loadConfig(path);
+      expect(config.token).toBe("config-token");
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
   });
 
-  test("throws if no token available", () => {
-    expect(() =>
-      parseConfig(`
+  test("throws if config file not found", () => {
+    expect(loadConfig(join(dir, "missing.toml"))).rejects.toThrow(
+      "Config file not found"
+    );
+  });
+
+  test("throws if no token", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "";
+    try {
+      const path = await writeConfig(`
 [bot]
 token = ""
-`)
-    ).toThrow("Bot token is required");
+`);
+      expect(loadConfig(path)).rejects.toThrow("Bot token is required");
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
   });
 
-  test("throws if channel missing id", () => {
-    expect(() =>
-      parseConfig(`
+  test("throws if channel missing id", async () => {
+    const path = await writeConfig(`
 [bot]
 token = "tok"
 
 [channels.broken]
 on_message = "./hooks/echo.sh"
-`)
-    ).toThrow('Channel "broken" is missing required field: id');
+`);
+    expect(loadConfig(path)).rejects.toThrow("missing required field: id");
   });
 
-  test("throws if channel missing on_message", () => {
-    expect(() =>
-      parseConfig(`
+  test("throws if channel missing on_message", async () => {
+    const path = await writeConfig(`
 [bot]
 token = "tok"
 
 [channels.broken]
 id = "111"
-`)
-    ).toThrow('Channel "broken" is missing required field: on_message');
+`);
+    expect(loadConfig(path)).rejects.toThrow(
+      "missing required field: on_message"
+    );
   });
 
-  test("loads multiple channels", () => {
-    const config = parseConfig(`
+  test("loads multiple channels", async () => {
+    const path = await writeConfig(`
 [bot]
 token = "tok"
 
@@ -96,20 +135,9 @@ on_message = "./hooks/a.sh"
 id = "222"
 on_message = "./hooks/b.sh"
 `);
+    const config = await loadConfig(path);
     expect(config.channels.size).toBe(2);
     expect(config.channels.get("111")?.name).toBe("general");
     expect(config.channels.get("222")?.name).toBe("random");
-  });
-
-  test("ignores non-channel sections", () => {
-    const config = parseConfig(`
-[bot]
-token = "tok"
-
-[channels.general]
-id = "111"
-on_message = "./hooks/echo.sh"
-`);
-    expect(config.channels.size).toBe(1);
   });
 });

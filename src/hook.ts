@@ -23,13 +23,11 @@ export async function executeHook(
   proc.stdin.write(json);
   proc.stdin.end();
 
-  const [output, error, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+  const exitCode = await proc.exited;
+  const timedOut = proc.signalCode !== null;
 
-  const timedOut = proc.killed && exitCode === null;
+  const output = timedOut ? "" : await new Response(proc.stdout).text();
+  const error = timedOut ? "" : await new Response(proc.stderr).text();
 
   return {
     success: exitCode === 0,
