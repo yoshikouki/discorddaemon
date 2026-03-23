@@ -1,0 +1,6 @@
+[bot]
+token = "" # or set DDD_TOKEN env var
+
+[channels.general]
+id = "CHANNEL_ID_HERE"
+on_message = "./hooks/echo.sh"
