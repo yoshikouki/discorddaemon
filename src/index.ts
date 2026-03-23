@@ -10,6 +10,11 @@ Commands:
   init              Scaffold ddd.toml and hooks/
 `;
 
+function fatal(err: unknown): never {
+  console.error("[ddd]", err);
+  process.exit(1);
+}
+
 function main(): void {
   const command = process.argv[2];
 
@@ -19,11 +24,11 @@ function main(): void {
         args: process.argv.slice(3),
         options: { config: { type: "string", short: "c" } },
       });
-      startCommand({ config: values.config });
+      startCommand({ config: values.config }).catch(fatal);
       break;
     }
     case "init":
-      initCommand();
+      initCommand().catch(fatal);
       break;
     default:
       console.error(USAGE);
