@@ -1,43 +1,34 @@
 #!/usr/bin/env bun
-import { parseCliArgs } from "./cli.ts";
-import { loadConfig } from "./config.ts";
-import { createDaemon } from "./daemon.ts";
+import { parseArgs } from "node:util";
+import { initCommand } from "./commands/init";
+import { startCommand } from "./commands/start";
 
-const sample = `[bot]
-token = "" # or set DDD_TOKEN env var
+const USAGE = `Usage: ddd <command>
 
-[channels.general]
-id = "CHANNEL_ID_HERE"
-on_message = "./hooks/echo.sh"
+Commands:
+  start [-c path]   Start the daemon
+  init              Scaffold ddd.toml and hooks/
 `;
 
-function installSignalHandlers(stop: () => void): void {
-  process.on("SIGINT", () => {
-    console.error("\n[ddd] Shutting down...");
-    stop();
-    process.exit(0);
-  });
+function main(): void {
+  const command = process.argv[2];
 
-  process.on("SIGTERM", () => {
-    console.error("[ddd] Received SIGTERM, shutting down...");
-    stop();
-    process.exit(0);
-  });
-}
-
-try {
-  const command = parseCliArgs(process.argv.slice(2));
-
-  if (command.name === "init") {
-    console.log(sample);
-  } else {
-    const config = loadConfig(command.configPath);
-    const daemon = createDaemon(config.bot.token, config.channels);
-
-    installSignalHandlers(() => daemon.stop());
-    daemon.start();
+  switch (command) {
+    case "start": {
+      const { values } = parseArgs({
+        args: process.argv.slice(3),
+        options: { config: { type: "string", short: "c" } },
+      });
+      startCommand({ config: values.config });
+      break;
+    }
+    case "init":
+      initCommand();
+      break;
+    default:
+      console.error(USAGE);
+      process.exit(command ? 1 : 0);
   }
-} catch (err) {
-  console.error(`[ddd] ${err instanceof Error ? err.message : err}`);
-  process.exit(1);
 }
+
+main();
