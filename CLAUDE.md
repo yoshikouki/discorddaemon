@@ -8,8 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 bun install              # Install dependencies
 bun run start            # Start daemon (reads ddd.toml)
 bun run dev              # Start with --watch for development
-bun test                 # Run all tests
-bun test src/cli.test.ts # Run a single test file
+bun run test             # Run all tests (vitest)
+bunx vitest run src/cli.test.ts  # Run a single test file
 bun run lint             # Lint with Biome
 bun run format           # Auto-fix lint/format with Biome
 ```
@@ -50,5 +50,5 @@ Hooks are any executable. They receive a JSON message object on stdin and write 
 - **Bun runtime** — No Node.js or npm. Use `Bun.spawn`, `Bun.file`, etc.
 - **Biome** for linting/formatting — 4-space indent, double quotes, recommended rules.
 - **No external TOML/CLI libraries** — Both are hand-rolled to keep dependencies minimal (only `discord.js`).
-- **Test files** live alongside source as `*.test.ts`, using `bun:test`.
+- **Test files** live alongside source as `*.test.ts`, using `vitest`.
 - **Logging** goes to stderr with `[ddd]` or `[hook]` prefix. Stdout is reserved for hook output.
