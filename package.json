@@ -12,9 +12,7 @@
         "start": "bun run src/index.ts start",
         "dev": "bun run --watch src/index.ts start",
         "test": "vitest run",
-        "test:coverage": "vitest run --coverage",
-        "lint": "biome check .",
-        "format": "biome check --write ."
+        "test:coverage": "vitest run --coverage"
     },
     "engines": {
         "bun": ">=1.3.10"
@@ -23,7 +21,6 @@
         "discord.js": "^14.18.0"
     },
     "devDependencies": {
-        "@biomejs/biome": "^1.9.4",
         "@types/bun": "^1.3.11",
         "@vitest/coverage-v8": "^4.1.0",
         "vitest": "^4.1.0"
@@ -31,6 +28,5 @@
     "peerDependencies": {
         "typescript": "^5"
     },
-    "license": "MIT",
-    "trustedDependencies": ["@biomejs/biome"]
+    "license": "MIT"
 }
