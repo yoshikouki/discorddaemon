@@ -1,8 +1,6 @@
-npm test
+bun run test
 
 # ultracite
-#!/bin/sh
-# Exit on any error
 set -e
 
 # Check if there are any staged files

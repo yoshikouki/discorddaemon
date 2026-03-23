@@ -11,6 +11,8 @@ bun run dev              # Start with --watch for development
 bun run test             # Run all tests (vitest)
 bun run test:coverage    # Run tests with coverage report
 bunx vitest run src/cli.test.ts  # Run a single test file
+bun run check            # Lint/format check (ultracite + biome v2)
+bun run fix              # Auto-fix lint/format issues
 ```
 
 ## Architecture
@@ -47,6 +49,7 @@ Hooks are any executable. They receive a JSON message object on stdin and write 
 ## Conventions
 
 - **Bun runtime** — No Node.js or npm. Use `Bun.spawn`, `Bun.file`, etc.
+- **Ultracite + Biome v2** for linting/formatting — 2-space indent, double quotes. Pre-commit hook runs tests and auto-fixes.
 - **No external TOML/CLI libraries** — Both are hand-rolled to keep dependencies minimal (only `discord.js`).
 - **Test files** live alongside source as `*.test.ts`, using `vitest`.
 - **Logging** goes to stderr with `[ddd]` or `[hook]` prefix. Stdout is reserved for hook output.
