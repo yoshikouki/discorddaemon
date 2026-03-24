@@ -1,13 +1,8 @@
-import { openSync } from "node:fs";
+import { mkdirSync, openSync } from "node:fs";
 import { loadConfig } from "../config";
 import { Daemon } from "../daemon";
-import {
-  DEFAULT_LOG_PATH,
-  isProcessRunning,
-  readPid,
-  removePid,
-  writePid,
-} from "../pid";
+import { DATA_DIR, LOG_PATH } from "../paths";
+import { isProcessRunning, readPid, removePid, writePid } from "../pid";
 
 function log(msg: string): void {
   console.error(`[ddd] ${msg}`);
@@ -32,6 +27,7 @@ async function startForeground(args: { config?: string }): Promise<void> {
   const config = await loadConfig(args.config);
   const daemon = new Daemon(config);
 
+  mkdirSync(DATA_DIR, { recursive: true });
   await writePid(process.pid);
 
   const shutdown = () => {
@@ -58,8 +54,9 @@ async function startDaemon(args: { config?: string }): Promise<void> {
   // Validate config before spawning (fail fast)
   await loadConfig(args.config);
 
-  // Open log file in append mode
-  const logFd = openSync(DEFAULT_LOG_PATH, "a");
+  // Ensure data directory exists and open log file
+  mkdirSync(DATA_DIR, { recursive: true });
+  const logFd = openSync(LOG_PATH, "a");
 
   const configArgs = args.config ? ["-c", args.config] : [];
   const child = Bun.spawn(
@@ -76,10 +73,10 @@ async function startDaemon(args: { config?: string }): Promise<void> {
 
   if (!isProcessRunning(child.pid)) {
     await removePid();
-    throw new Error(`Daemon failed to start. Check log: ${DEFAULT_LOG_PATH}`);
+    throw new Error(`Daemon failed to start. Check log: ${LOG_PATH}`);
   }
 
   log(`Daemon started (PID: ${child.pid})`);
-  log(`Log: ${DEFAULT_LOG_PATH}`);
+  log(`Log: ${LOG_PATH}`);
   process.exit(0);
 }

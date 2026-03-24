@@ -1,20 +1,11 @@
 import { unlink } from "node:fs/promises";
-import { join } from "node:path";
-import { DEFAULT_CONFIG_DIR } from "./config";
+import { PID_PATH } from "./paths";
 
-export const DEFAULT_PID_PATH = join(DEFAULT_CONFIG_DIR, "ddd.pid");
-export const DEFAULT_LOG_PATH = join(DEFAULT_CONFIG_DIR, "ddd.log");
-
-export async function writePid(
-  pid: number,
-  pidPath = DEFAULT_PID_PATH
-): Promise<void> {
+export async function writePid(pid: number, pidPath = PID_PATH): Promise<void> {
   await Bun.write(pidPath, String(pid));
 }
 
-export async function readPid(
-  pidPath = DEFAULT_PID_PATH
-): Promise<number | null> {
+export async function readPid(pidPath = PID_PATH): Promise<number | null> {
   const file = Bun.file(pidPath);
   if (!(await file.exists())) {
     return null;
@@ -27,7 +18,7 @@ export async function readPid(
   return pid;
 }
 
-export async function removePid(pidPath = DEFAULT_PID_PATH): Promise<void> {
+export async function removePid(pidPath = PID_PATH): Promise<void> {
   try {
     await unlink(pidPath);
   } catch (err: unknown) {

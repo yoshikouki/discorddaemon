@@ -19,10 +19,10 @@ bun install -g discorddaemon
 2. Scaffold config and hooks:
 
 ```bash
-ddd init    # creates ~/.ddd/ddd.toml and ~/.ddd/hooks/echo.sh
+ddd init    # creates ~/.config/ddd/ddd.toml and hooks/
 ```
 
-3. Edit `~/.ddd/ddd.toml`:
+3. Edit `~/.config/ddd/ddd.toml`:
 
 ```toml
 [bot]

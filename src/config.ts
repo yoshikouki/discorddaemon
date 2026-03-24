@@ -1,9 +1,6 @@
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { CONFIG_PATH } from "./paths";
 import type { ChannelConfig, Config } from "./types";
-
-export const DEFAULT_CONFIG_DIR = join(homedir(), ".ddd");
-export const DEFAULT_CONFIG_PATH = join(DEFAULT_CONFIG_DIR, "ddd.toml");
 
 export async function resolveToken(opts?: {
   token?: string;
@@ -18,7 +15,7 @@ export async function resolveToken(opts?: {
     return envToken;
   }
 
-  const configPath = resolve(opts?.config ?? DEFAULT_CONFIG_PATH);
+  const configPath = resolve(opts?.config ?? CONFIG_PATH);
   const file = Bun.file(configPath);
   if (await file.exists()) {
     const text = await file.text();
@@ -34,7 +31,7 @@ export async function resolveToken(opts?: {
   );
 }
 
-export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<Config> {
+export async function loadConfig(path = CONFIG_PATH): Promise<Config> {
   const resolvedPath = resolve(path);
   const file = Bun.file(resolvedPath);
   if (!(await file.exists())) {

@@ -13,7 +13,7 @@ Commands:
   start [-c path] [-f]                                   Start the daemon (background by default)
   stop                                                   Stop the daemon
   status                                                 Check if the daemon is running
-  init                                                   Scaffold ~/.ddd/ddd.toml and hooks/
+  init                                                   Scaffold ~/.config/ddd/ config and hooks
   channels [-c path] [-t token]                          List available Discord channels
   messages list <channel_id> [-n limit]                  Fetch messages from a channel
   messages send <channel_id> [-m content]                Send a message to a channel

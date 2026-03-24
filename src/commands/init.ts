@@ -1,6 +1,6 @@
 import { chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_CONFIG_DIR } from "../config";
+import { CONFIG_DIR, DATA_DIR } from "../paths";
 
 const TEMPLATE_CONFIG = `[bot]
 token = ""  # or set DDD_TOKEN env var
@@ -16,10 +16,13 @@ const TEMPLATE_HOOK = `#!/bin/sh
 cat
 `;
 
-export async function initCommand(baseDir = DEFAULT_CONFIG_DIR): Promise<void> {
-  await mkdir(baseDir, { recursive: true });
+export async function initCommand(
+  configDir = CONFIG_DIR,
+  dataDir = DATA_DIR
+): Promise<void> {
+  await mkdir(configDir, { recursive: true });
 
-  const configPath = join(baseDir, "ddd.toml");
+  const configPath = join(configDir, "ddd.toml");
   const configFile = Bun.file(configPath);
 
   if (await configFile.exists()) {
@@ -29,7 +32,7 @@ export async function initCommand(baseDir = DEFAULT_CONFIG_DIR): Promise<void> {
   await Bun.write(configPath, TEMPLATE_CONFIG);
   console.error(`[ddd] Created ${configPath}`);
 
-  const hooksDir = join(baseDir, "hooks");
+  const hooksDir = join(configDir, "hooks");
   await mkdir(hooksDir, { recursive: true });
   console.error(`[ddd] Created ${hooksDir}/`);
 
@@ -42,6 +45,9 @@ export async function initCommand(baseDir = DEFAULT_CONFIG_DIR): Promise<void> {
     await chmod(hookPath, 0o755);
     console.error(`[ddd] Created ${hookPath}`);
   }
+
+  await mkdir(dataDir, { recursive: true });
+  console.error(`[ddd] Created ${dataDir}/`);
 
   console.error(`\n[ddd] Ready! Edit ${configPath}, then run: ddd start`);
 }

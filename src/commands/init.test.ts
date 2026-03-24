@@ -16,7 +16,8 @@ describe("initCommand", () => {
   });
 
   test("creates ddd.toml and hooks/echo.sh", async () => {
-    await initCommand(dir);
+    const dataDir = join(dir, "data");
+    await initCommand(dir, dataDir);
 
     const config = await Bun.file(join(dir, "ddd.toml")).text();
     expect(config).toContain("[bot]");
@@ -30,14 +31,23 @@ describe("initCommand", () => {
   });
 
   test("creates hooks directory", async () => {
-    await initCommand(dir);
+    await initCommand(dir, join(dir, "data"));
     const entries = await readdir(join(dir, "hooks"));
     expect(entries).toContain("echo.sh");
   });
 
   test("throws if ddd.toml already exists", async () => {
     await Bun.write(join(dir, "ddd.toml"), "existing");
-    await expect(initCommand(dir)).rejects.toThrow("already exists");
+    await expect(initCommand(dir, join(dir, "data"))).rejects.toThrow(
+      "already exists"
+    );
+  });
+
+  test("creates data directory", async () => {
+    const dataDir = join(dir, "data");
+    await initCommand(dir, dataDir);
+    const { access } = await import("node:fs/promises");
+    await access(dataDir);
   });
 
   test("does not overwrite existing hooks/echo.sh", async () => {
@@ -48,7 +58,7 @@ describe("initCommand", () => {
     await Bun.write(hookPath, customContent);
     await chmod(hookPath, 0o755);
 
-    await initCommand(dir);
+    await initCommand(dir, join(dir, "data"));
 
     const content = await Bun.file(hookPath).text();
     expect(content).toBe(customContent);

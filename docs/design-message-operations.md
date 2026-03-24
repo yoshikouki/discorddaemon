@@ -44,7 +44,7 @@ Fetches messages from a channel. Wraps `channel.messages.fetch(options)`.
 | `--before` | | string | | `FetchMessagesOptions.before` |
 | `--after` | | string | | `FetchMessagesOptions.after` |
 | `--around` | | string | | `FetchMessagesOptions.around` |
-| `--config` | `-c` | string | `~/.ddd/ddd.toml` | N/A |
+| `--config` | `-c` | string | `~/.config/ddd/ddd.toml` | N/A |
 
 `--before`, `--after`, and `--around` are mutually exclusive (Discord API constraint). If multiple are provided, exit with error.
 
@@ -107,7 +107,7 @@ Sends a message to a channel. Wraps `channel.send(content)`.
 | Flag | Short | Type | Default | SDK mapping |
 |------|-------|------|---------|-------------|
 | `--content` | `-m` | string | | `MessageCreateOptions.content` |
-| `--config` | `-c` | string | `~/.ddd/ddd.toml` | N/A |
+| `--config` | `-c` | string | `~/.config/ddd/ddd.toml` | N/A |
 
 **Content source priority:**
 1. `--content "text"` flag
@@ -142,7 +142,7 @@ Edits a message. Wraps `channel.messages.edit(messageId, options)`. The bot can 
 | Flag | Short | Type | Default | SDK mapping |
 |------|-------|------|---------|-------------|
 | `--content` | `-m` | string | | `MessageEditOptions.content` |
-| `--config` | `-c` | string | `~/.ddd/ddd.toml` | N/A |
+| `--config` | `-c` | string | `~/.config/ddd/ddd.toml` | N/A |
 
 **Content source:** Same priority as `send` (flag first, then stdin).
 
@@ -170,7 +170,7 @@ Deletes a message. Wraps `channel.messages.delete(messageId)`.
 
 | Flag | Short | Type | Default |
 |------|-------|------|---------|
-| `--config` | `-c` | string | `~/.ddd/ddd.toml` |
+| `--config` | `-c` | string | `~/.config/ddd/ddd.toml` |
 
 **Output:** SDK returns `Promise<void>`. Following thin-wrapper principle, success produces no output and exit code 0.
 
@@ -196,7 +196,7 @@ Adds a reaction to a message. Wraps `channel.messages.react(messageId, emoji)`.
 
 | Flag | Short | Type | Default |
 |------|-------|------|---------|
-| `--config` | `-c` | string | `~/.ddd/ddd.toml` |
+| `--config` | `-c` | string | `~/.config/ddd/ddd.toml` |
 
 **Emoji argument formats** (mirrors `EmojiIdentifierResolvable` from discord.js):
 - Unicode emoji: `ddd messages react <ch> <msg> "👍"`
@@ -237,7 +237,7 @@ Searches for messages across all channels in a guild. Wraps Discord REST API end
 | `--has` | | string | | No | `has` query param |
 | `--limit` | `-n` | number | `25` | No | `limit` query param, must be 1-25 |
 | `--offset` | | number | `0` | No | `offset` query param, max 9975 |
-| `--config` | `-c` | string | `~/.ddd/ddd.toml` | No | N/A |
+| `--config` | `-c` | string | `~/.config/ddd/ddd.toml` | No | N/A |
 
 **Search filter requirement:**
 
@@ -363,7 +363,7 @@ Internally uses `GET /guilds/{guild.id}/messages/search` with `sort_by=timestamp
 |------|-------|------|---------|-----------|-----------|
 | `--limit` | `-n` | number | `50` | No | Total messages to return. Range: 1-100 |
 | `--channel-id` | | string | (all) | Yes | Filter to specific channels |
-| `--config` | `-c` | string | `~/.ddd/ddd.toml` | No | Config file path |
+| `--config` | `-c` | string | `~/.config/ddd/ddd.toml` | No | Config file path |
 
 No `--content`, `--author-id`, `--author-type`, `--has`, `--offset`, `--sort-by`, or `--sort-order` flags. These are intentionally omitted — agents that need fine-grained control should use `messages search`.
 
@@ -617,7 +617,7 @@ Usage: ddd <command>
 
 Commands:
   start [-c path]                                        Start the daemon
-  init                                                   Scaffold ~/.ddd/ddd.toml and hooks/
+  init                                                   Scaffold ~/.config/ddd/ config and hooks
   channels [-c path]                                     List available Discord channels
   messages list <channel_id> [-n limit]                  Fetch messages from a channel
   messages send <channel_id> [-m content]                Send a message to a channel
