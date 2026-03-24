@@ -13,7 +13,7 @@ for await (const chunk of Bun.stdin.stream()) {
 }
 const buf = Buffer.concat(chunks);
 const data = JSON.parse(buf.toString());
-process.stdout.write(data.content);
+process.stdout.write(data.message.content);
 ")
 
 echo "$content"
