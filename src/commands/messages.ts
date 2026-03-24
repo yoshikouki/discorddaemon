@@ -199,13 +199,12 @@ export async function sendMessage(
     throw new Error("Content required: use --content or pipe to stdin");
   }
 
-  const trimmed = content.trim();
-  if (!trimmed) {
+  if (!content.trim()) {
     throw new Error("Content must not be empty");
   }
 
   const config = await loadConfig(args.config);
-  const message = await executor(config.token, args.channelId, trimmed);
+  const message = await executor(config.token, args.channelId, content);
   console.log(JSON.stringify(message));
 }
 
@@ -228,8 +227,7 @@ export async function editMessage(
     throw new Error("Content required: use --content or pipe to stdin");
   }
 
-  const trimmed = content.trim();
-  if (!trimmed) {
+  if (!content.trim()) {
     throw new Error("Content must not be empty");
   }
 
@@ -238,7 +236,7 @@ export async function editMessage(
     config.token,
     args.channelId,
     args.messageId,
-    trimmed
+    content
   );
   console.log(JSON.stringify(message));
 }
