@@ -12,7 +12,7 @@ bun install -g discorddaemon
 
 ## Quick Start
 
-> **初めて使う場合は [Setup Guide](docs/setup.md) を参照。** Bot の作成からチャンネル設定まで手順を解説しています。
+> **First time?** See the [Setup Guide](docs/setup.md) for step-by-step instructions from bot creation to channel configuration.
 
 1. Create a Discord bot at [Discord Developer Portal](https://discord.com/developers/applications) and grab the token.
 

@@ -1,40 +1,40 @@
 # Setup Guide
 
-ddd を動かすまでの初期設定ガイド。
+Getting ddd up and running from scratch.
 
-## 1. Discord Bot の作成
+## 1. Create a Discord Bot
 
-1. [Discord Developer Portal](https://discord.com/developers/applications) を開く
-2. **New Application** をクリックし、名前を付けて作成
-3. 左メニュー **Bot** を開く
-4. **Reset Token** をクリックしてトークンをコピー（この値を `ddd.toml` に設定する）
-5. 同じページの **Privileged Gateway Intents** で **Message Content Intent** を ON にする
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **New Application**, give it a name, and create
+3. Go to **Bot** in the left menu
+4. Click **Reset Token** and copy the token (you'll put this in `ddd.toml`)
+5. On the same page, under **Privileged Gateway Intents**, enable **Message Content Intent**
 
-## 2. Bot をサーバーに招待
+## 2. Invite the Bot to Your Server
 
-1. 左メニュー **OAuth2** → **URL Generator** を開く
-2. **Scopes** で `bot` にチェック
-3. **Bot Permissions** で以下にチェック:
+1. Go to **OAuth2** → **URL Generator** in the left menu
+2. Under **Scopes**, check `bot`
+3. Under **Bot Permissions**, check:
    - Send Messages
    - Read Message History
-4. 生成された URL をブラウザで開き、Bot を追加するサーバーを選択
+4. Open the generated URL in your browser and select the server to add the bot to
 
-## 3. チャンネル ID の取得
+## 3. Get the Channel ID
 
-1. Discord クライアントで **ユーザー設定 → 詳細設定 → 開発者モード** を ON にする
-2. 対象チャンネルを右クリック → **チャンネル ID をコピー**
+1. In Discord, go to **User Settings → Advanced → Developer Mode** and turn it ON
+2. Right-click the target channel → **Copy Channel ID**
 
-## 4. プロジェクトの初期化
+## 4. Initialize the Project
 
 ```bash
 ddd init
 ```
 
-`ddd.toml` と `hooks/echo.sh` が生成される。
+This generates `ddd.toml` and `hooks/echo.sh`.
 
-## 5. 設定ファイルの編集
+## 5. Configure
 
-`ddd.toml` にトークンとチャンネル ID を設定:
+Edit `ddd.toml` with your token and channel ID:
 
 ```toml
 [bot]
@@ -45,25 +45,25 @@ id = "123456789012345678"
 on_message = "./hooks/echo.sh"
 ```
 
-トークンは環境変数 `DDD_TOKEN` でも指定できる:
+You can also set the token via the `DDD_TOKEN` environment variable:
 
 ```bash
 export DDD_TOKEN="YOUR_BOT_TOKEN"
 ```
 
-## 6. 起動
+## 6. Start
 
 ```bash
-ddd start           # 通常起動
-ddd start -c path   # 設定ファイルのパスを指定
+ddd start           # normal start
+ddd start -c path   # specify config file path
 ```
 
-開発時はファイル変更で自動リスタートするモードが便利:
+For development, auto-restart on file changes:
 
 ```bash
 bun run dev
 ```
 
-## 7. 動作確認
+## 7. Verify
 
-Discord で設定したチャンネルにメッセージを送る。`echo.sh` が動いていれば、送ったメッセージがそのままオウム返しされる。
+Send a message in the configured Discord channel. If `echo.sh` is working, the bot will echo your message back.
