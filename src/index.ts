@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
+import { channelsCommand } from "./commands/channels";
 import { initCommand } from "./commands/init";
 import { startCommand } from "./commands/start";
 
 const USAGE = `Usage: ddd <command>
 
 Commands:
-  start [-c path]   Start the daemon
-  init              Scaffold ddd.toml and hooks/
+  start [-c path]      Start the daemon
+  init                 Scaffold ddd.toml and hooks/
+  channels [-c path]   List available Discord channels
 `;
 
 function fatal(err: unknown): never {
@@ -31,6 +33,14 @@ function main(): void {
     case "init":
       initCommand().catch(fatal);
       break;
+    case "channels": {
+      const { values: channelsValues } = parseArgs({
+        args: process.argv.slice(3),
+        options: { config: { type: "string", short: "c" } },
+      });
+      channelsCommand({ config: channelsValues.config }).catch(fatal);
+      break;
+    }
     default:
       console.error(USAGE);
       process.exit(command ? 1 : 0);
