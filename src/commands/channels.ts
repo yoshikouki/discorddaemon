@@ -1,19 +1,25 @@
 import { ChannelType, Client, Events, GatewayIntentBits } from "discord.js";
-import { loadConfig } from "../config";
+import { resolveToken } from "../config";
 
 export interface ChannelInfo {
   channel_id: string;
   channel_name: string;
   guild_id: string;
   guild_name: string;
+  parent_id: string | null;
   parent_name: string | null;
-  position: number;
+  position: number | null;
   type: string;
 }
 
 const TEXT_CHANNEL_TYPES = new Set([
   ChannelType.GuildText,
   ChannelType.GuildAnnouncement,
+  ChannelType.AnnouncementThread,
+  ChannelType.PublicThread,
+  ChannelType.PrivateThread,
+  ChannelType.GuildForum,
+  ChannelType.GuildMedia,
 ]);
 
 export type ChannelFetcher = (token: string) => Promise<ChannelInfo[]>;
@@ -46,15 +52,19 @@ export async function fetchDiscordChannels(
           channel_id: channel.id,
           channel_name: channel.name,
           type: ChannelType[channel.type],
+          parent_id: "parentId" in channel ? (channel.parentId ?? null) : null,
           parent_name: channel.parent?.name ?? null,
-          position: channel.position,
+          position: "position" in channel ? channel.position : null,
         });
       }
     }
 
     channels.sort(
       (a, b) =>
-        a.guild_name.localeCompare(b.guild_name) || a.position - b.position
+        a.guild_name.localeCompare(b.guild_name) ||
+        (a.position ?? Number.MAX_SAFE_INTEGER) -
+          (b.position ?? Number.MAX_SAFE_INTEGER) ||
+        a.channel_name.localeCompare(b.channel_name)
     );
 
     return channels;
@@ -64,11 +74,11 @@ export async function fetchDiscordChannels(
 }
 
 export async function channelsCommand(
-  args: { config?: string },
+  args: { config?: string; token?: string },
   fetcher: ChannelFetcher = fetchDiscordChannels
 ): Promise<void> {
-  const config = await loadConfig(args.config);
-  const channels = await fetcher(config.token);
+  const token = await resolveToken({ token: args.token, config: args.config });
+  const channels = await fetcher(token);
 
   for (const ch of channels) {
     console.log(JSON.stringify(ch));
