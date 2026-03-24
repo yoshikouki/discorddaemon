@@ -2,7 +2,7 @@
 
 ## Overview
 
-Six CLI subcommands under `ddd messages` that wrap Discord.js `MessageManager` and `Message` methods as thin, one-shot CLI operations. Each command connects to Discord, performs a single action, prints the result as NDJSON to stdout (where applicable), and disconnects.
+Seven CLI subcommands under `ddd messages`: six are thin SDK wrappers (list, send, edit, delete, react, search) and one is an agent-native command (recent) that composes SDK operations with sensible defaults. Each command connects to Discord, performs a single action, prints the result as NDJSON to stdout (where applicable), and disconnects.
 
 The design principle: **a foundation model that knows the Discord API should predict ddd's CLI behavior without reading docs.**
 
@@ -23,6 +23,7 @@ ddd messages edit <channel_id> <message_id> [flags]
 ddd messages delete <channel_id> <message_id> [flags]
 ddd messages react <channel_id> <message_id> <emoji> [flags]
 ddd messages search <guild_id> [flags]
+ddd messages recent <guild_id> [flags]
 ```
 
 All commands accept `-c / --config <path>` to specify the config file (for token resolution). No command requires the channel to be registered in the config; the config is only used for the bot token.
@@ -342,6 +343,102 @@ return hits.map((raw: RawMessage) => buildMessageInfoFromRaw(raw, {
 
 ---
 
+### 2.7 `ddd messages recent <guild_id>`
+
+**Agent-native command.** Fetches recent messages from all (or selected) channels in a guild. An AI agent just asks "what's been happening recently?" — no Discord API knowledge needed.
+
+Internally uses `GET /guilds/{guild.id}/messages/search` with `sort_by=timestamp`, `sort_order=desc`, and auto-pagination.
+
+**Verified:** Filterless search works with bot tokens (tested 2026-03-24, `sort_by=timestamp&sort_order=desc&limit=3` returned 3 messages from multiple channels, `total_results: 58567`).
+
+**Flags:**
+
+| Flag | Short | Type | Default | Repeatable | Semantics |
+|------|-------|------|---------|-----------|-----------|
+| `--limit` | `-n` | number | `50` | No | Total messages to return. Range: 1-100 |
+| `--channel-id` | | string | (all) | Yes | Filter to specific channels |
+| `--config` | `-c` | string | `~/.ddd/ddd.toml` | No | Config file path |
+
+No `--content`, `--author-id`, `--author-type`, `--has`, `--offset`, `--sort-by`, or `--sort-order` flags. These are intentionally omitted — agents that need fine-grained control should use `messages search`.
+
+**Limit behavior:**
+
+`--limit` controls the total number of messages returned, not the API page size. The command auto-paginates internally:
+
+- Discord search API caps 25 results per request
+- `--limit 50` (default) → 2 API calls (offset 0, offset 25)
+- `--limit 100` (max) → up to 4 API calls
+- Stops early if a page returns fewer results than requested (end of results)
+
+The 1-100 range is a product constraint (response time and noise), not an API limitation. Agents needing more than 100 messages should paginate via `messages search` with explicit `--offset`.
+
+**Channel filtering:**
+
+```bash
+# All channels, latest 50 messages
+ddd messages recent <guild_id>
+
+# Specific channels, latest 75 messages
+ddd messages recent <guild_id> --channel-id 111 --channel-id 222 -n 75
+```
+
+**Output (NDJSON, one line per message, newest first):**
+
+Same `MessageInfo` schema as all other message commands. Always sorted by timestamp descending.
+
+**SDK mapping:**
+
+```typescript
+const pageSize = 25;
+const allHits: RawDiscordMessage[] = [];
+
+for (let offset = 0; offset < options.limit; offset += pageSize) {
+  const params = new URLSearchParams();
+  for (const cid of options.channelIds) {
+    params.append("channel_id", cid);
+  }
+  params.append("sort_by", "timestamp");
+  params.append("sort_order", "desc");
+  params.append("limit", String(Math.min(pageSize, options.limit - offset)));
+  params.append("offset", String(offset));
+
+  const response = await client.rest.get(
+    `/guilds/${guildId}/messages/search`,
+    { query: params }
+  );
+  const hits = extractSearchHits(response.messages);
+  allHits.push(...hits);
+
+  // Stop if fewer results than requested (reached end)
+  if (hits.length < Math.min(pageSize, options.limit - offset)) break;
+}
+
+// Name resolution (same best-effort pattern as search)
+// Transform via buildMessageInfoFromRaw
+```
+
+**Required bot permissions:** `VIEW_CHANNEL`, `READ_MESSAGE_HISTORY`
+
+### Data Caveats
+
+- **MESSAGE_CONTENT intent**: Same caveat as all message commands.
+- **Name resolution**: Best-effort, same as `search`. Deleted/inaccessible channels get `name: null`.
+- **Auto-pagination**: Transparent to the caller. Fewer than `--limit` messages may be returned if the guild has fewer messages.
+- **No time filtering in v1**: `--since` is intentionally omitted. The search API has no `before`/`after` timestamp params; client-side time filtering would complicate the predictable "give me N messages" semantic. Future iteration may add `--since` with explicit semantics.
+
+### `recent` vs `search`
+
+| Aspect | `search` | `recent` |
+|--------|----------|---------|
+| **Philosophy** | SDK wrapper | Agent-native |
+| **Filters required?** | Yes (at least one) | No |
+| **Pagination** | Manual (`--offset`) | Automatic (`--limit` only) |
+| **Sorting** | Configurable (future) | Fixed: timestamp desc |
+| **Use case** | "Find messages matching X" | "What happened recently?" |
+| **API knowledge needed** | Yes | None |
+
+---
+
 ## 3. Shared Message Schema
 
 ```typescript
@@ -399,6 +496,8 @@ Both are the single source of truth for message serialization. `HookInput.messag
 | `--offset` out of range (< 0 or > 9975) | `Offset must be 0-9975` | 1 |
 | `--author-type` invalid value | `author-type must be "user" or "bot"` | 1 |
 | `--has` invalid value | `has must be one of: link, embed, file, video, image, sound` | 1 |
+| Missing `<guild_id>` positional (recent) | `Usage: ddd messages recent <guild_id> [flags]` | 1 |
+| `--limit` out of range for recent (< 1 or > 100) | `Limit must be 1-100` | 1 |
 | Discord API errors | Error message forwarded | 1 |
 
 All errors go to stderr with `[ddd]` prefix, no stack traces.
@@ -411,7 +510,7 @@ All errors go to stderr with `[ddd]` prefix, no stack traces.
 
 ```
 src/commands/
-  messages.ts          # ddd messages list|send|edit|delete|react|search (dispatcher + all subcommands)
+  messages.ts          # ddd messages list|send|edit|delete|react|search|recent (dispatcher + all subcommands)
   messages.test.ts
 src/
   discord.ts           # Shared: withDiscordClient helper
@@ -460,7 +559,7 @@ export async function readStdin(): Promise<string | undefined> {
 
 ### 5.5 CLI Entrypoint (`src/index.ts`)
 
-The `messages` command is registered as a single top-level command. The dispatcher in `messages.ts` parses the subcommand (`list`, `send`, `edit`, `delete`, `react`, `search`) from the remaining positional arguments.
+The `messages` command is registered as a single top-level command. The dispatcher in `messages.ts` parses the subcommand (`list`, `send`, `edit`, `delete`, `react`, `search`, `recent`) from the remaining positional arguments.
 
 The `search` subcommand introduces repeatable flags. `parseArgs` options must include `"author-id": { type: "string", multiple: true }` and `"channel-id": { type: "string", multiple: true }` alongside the existing options. The `messagesCommand` dispatcher values type must be extended to include `"author-id"?: string[]`, `"author-type"?: string`, `"channel-id"?: string[]`, `has?: string`, and `offset?: string`.
 
@@ -477,7 +576,8 @@ The `search` subcommand introduces repeatable flags. `parseArgs` options must in
 7. `src/commands/messages.ts` -- `ddd messages react` (REST-only, no extra intents)
 8. `src/message-info.ts` -- `buildMessageInfoFromRaw` for raw REST JSON
 9. `src/commands/messages.ts` -- `ddd messages search` (REST-based guild search)
-10. `src/index.ts` -- add `messages` command case, update USAGE, add repeatable flags to parseArgs
+10. `src/commands/messages.ts` -- `ddd messages recent` (agent-native, auto-paginated)
+11. `src/index.ts` -- add `messages` command case, update USAGE, add repeatable flags to parseArgs
 
 ---
 
@@ -494,7 +594,9 @@ The `search` subcommand introduces repeatable flags. `parseArgs` options must in
 - **Search uses raw REST**: discord.js does not wrap `GET /guilds/{guild.id}/messages/search`, so `client.rest.get()` is used directly with manual `URLSearchParams` construction
 - **Hit-only output**: The search API returns context messages around each hit; only the hit (middle element) is output to match the "one message per NDJSON line" convention
 - **Best-effort name resolution**: Channel/guild names are fetched via gateway; failures (deleted channels, permission issues) fall back to `null` rather than failing the entire search
-- **Require at least one filter**: Unfiltered search overlaps with `messages list`; requiring a filter keeps the commands distinct
+- **Require at least one filter**: Unfiltered search overlaps with `messages recent`; requiring a filter keeps the commands distinct
+- **Agent-native `recent`**: Composes search API with sensible defaults (timestamp desc, auto-pagination, no filters). Designed for AI agents that don't know the Discord API. The name itself explains the intent.
+- **No `--since` in v1**: The search API lacks time-based filters. Client-side filtering would break the predictable "N messages" contract. Deferred to future iteration with explicit semantics.
 
 ---
 
@@ -513,4 +615,5 @@ Commands:
   messages delete <channel_id> <message_id>              Delete a message
   messages react <channel_id> <message_id> <emoji>       Add a reaction to a message
   messages search <guild_id> [--content text] [flags]    Search messages across a guild
+  messages recent <guild_id> [-n limit]                  Fetch recent messages across a guild
 ```
