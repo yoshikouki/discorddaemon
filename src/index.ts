@@ -2,14 +2,20 @@
 import { parseArgs } from "node:util";
 import { channelsCommand } from "./commands/channels";
 import { initCommand } from "./commands/init";
+import { messagesCommand } from "./commands/messages";
 import { startCommand } from "./commands/start";
 
 const USAGE = `Usage: ddd <command>
 
 Commands:
-  start [-c path]      Start the daemon
-  init                 Scaffold ~/.ddd/ddd.toml and hooks/
-  channels [-c path]   List available Discord channels
+  start [-c path]                                        Start the daemon
+  init                                                   Scaffold ~/.ddd/ddd.toml and hooks/
+  channels [-c path]                                     List available Discord channels
+  messages list <channel_id> [-n limit]                  Fetch messages from a channel
+  messages send <channel_id> [-m content]                Send a message to a channel
+  messages edit <channel_id> <message_id> [-m content]   Edit a message
+  messages delete <channel_id> <message_id>              Delete a message
+  messages react <channel_id> <message_id> <emoji>       Add a reaction to a message
 `;
 
 function fatal(err: unknown): never {
@@ -39,6 +45,22 @@ function main(): void {
         options: { config: { type: "string", short: "c" } },
       });
       channelsCommand({ config: channelsValues.config }).catch(fatal);
+      break;
+    }
+    case "messages": {
+      const { values: messagesValues, positionals } = parseArgs({
+        args: process.argv.slice(3),
+        options: {
+          config: { type: "string", short: "c" },
+          content: { type: "string", short: "m" },
+          limit: { type: "string", short: "n" },
+          before: { type: "string" },
+          after: { type: "string" },
+          around: { type: "string" },
+        },
+        allowPositionals: true,
+      });
+      messagesCommand(positionals, messagesValues).catch(fatal);
       break;
     }
     default:
