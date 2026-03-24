@@ -13,8 +13,9 @@ export async function resolveToken(opts?: {
     return opts.token;
   }
 
-  if (process.env.DDD_TOKEN) {
-    return process.env.DDD_TOKEN;
+  const envToken = process.env.DDD_TOKEN?.trim();
+  if (envToken) {
+    return envToken;
   }
 
   const configPath = resolve(opts?.config ?? DEFAULT_CONFIG_PATH);
@@ -23,7 +24,7 @@ export async function resolveToken(opts?: {
     const text = await file.text();
     const parsed = Bun.TOML.parse(text) as Record<string, unknown>;
     const bot = parsed.bot as Record<string, string> | undefined;
-    if (bot?.token) {
+    if (bot?.token && typeof bot.token === "string" && bot.token.trim()) {
       return bot.token;
     }
   }
@@ -44,7 +45,7 @@ export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<Config> {
   const parsed = Bun.TOML.parse(text) as Record<string, unknown>;
 
   const bot = parsed.bot as Record<string, string> | undefined;
-  const token = bot?.token || process.env.DDD_TOKEN;
+  const token = bot?.token || process.env.DDD_TOKEN?.trim();
   if (!token) {
     throw new Error(
       "Bot token is required: set [bot] token in ddd.toml or DDD_TOKEN env var"

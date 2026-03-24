@@ -99,6 +99,20 @@ token = ""
     }
   });
 
+  test("skips whitespace-only DDD_TOKEN env var", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "   ";
+    try {
+      const path = await writeConfig(`
+[bot]
+token = ""
+`);
+      await expect(loadConfig(path)).rejects.toThrow("Bot token is required");
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
+  });
+
   test("throws if channel missing id", async () => {
     const path = await writeConfig(`
 [bot]
@@ -254,6 +268,19 @@ describe("resolveToken", () => {
       await expect(
         resolveToken({ config: join(dir, "missing.toml") })
       ).rejects.toThrow("Bot token is required");
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
+  });
+
+  test("skips whitespace-only DDD_TOKEN env var", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "   ";
+    try {
+      const configPath = join(dir, "ddd.toml");
+      await Bun.write(configPath, '[bot]\ntoken = "toml-token"\n');
+      const token = await resolveToken({ config: configPath });
+      expect(token).toBe("toml-token");
     } finally {
       process.env.DDD_TOKEN = original;
     }
