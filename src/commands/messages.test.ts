@@ -9,6 +9,7 @@ import {
   listMessages,
   messagesCommand,
   reactMessage,
+  searchMessages,
   sendMessage,
 } from "./messages";
 
@@ -429,18 +430,283 @@ describe("messages commands", () => {
     });
   });
 
+  // --- searchMessages ---
+
+  describe("searchMessages", () => {
+    test("prints each hit as NDJSON line", async () => {
+      const msgs = [
+        fakeMessage(),
+        fakeMessage({ id: "msg-2", content: "second" }),
+      ];
+      const executor = mock(() => Promise.resolve(msgs));
+
+      await searchMessages(
+        {
+          config: configPath,
+          guildId: "guild-1",
+          content: "hello",
+          authorIds: [],
+          channelIds: [],
+          limit: 25,
+          offset: 0,
+        },
+        executor
+      );
+
+      expect(lines).toHaveLength(2);
+      const first = JSON.parse(lines[0]);
+      expect(first.id).toBe("msg-1");
+      expect(first.content).toBe("hello world");
+
+      const second = JSON.parse(lines[1]);
+      expect(second.id).toBe("msg-2");
+    });
+
+    test("passes options to executor", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await searchMessages(
+        {
+          config: configPath,
+          guildId: "guild-1",
+          content: "test",
+          authorIds: ["user-1", "user-2"],
+          authorType: "bot",
+          channelIds: ["ch-1"],
+          has: "link",
+          limit: 10,
+          offset: 50,
+        },
+        executor
+      );
+
+      expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
+        content: "test",
+        authorIds: ["user-1", "user-2"],
+        authorType: "bot",
+        channelIds: ["ch-1"],
+        has: "link",
+        limit: 10,
+        offset: 50,
+      });
+    });
+
+    test("uses default limit 25 and offset 0 via dispatcher", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await searchMessages(
+        {
+          config: configPath,
+          guildId: "guild-1",
+          content: "test",
+          authorIds: [],
+          channelIds: [],
+          limit: 25,
+          offset: 0,
+        },
+        executor
+      );
+
+      expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
+        content: "test",
+        authorIds: [],
+        authorType: undefined,
+        channelIds: [],
+        has: undefined,
+        limit: 25,
+        offset: 0,
+      });
+    });
+
+    test("rejects limit below 1", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        searchMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            content: "test",
+            authorIds: [],
+            channelIds: [],
+            limit: 0,
+            offset: 0,
+          },
+          executor
+        )
+      ).rejects.toThrow("Limit must be 1-25");
+    });
+
+    test("rejects limit above 25", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        searchMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            content: "test",
+            authorIds: [],
+            channelIds: [],
+            limit: 26,
+            offset: 0,
+          },
+          executor
+        )
+      ).rejects.toThrow("Limit must be 1-25");
+    });
+
+    test("rejects NaN limit", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        searchMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            content: "test",
+            authorIds: [],
+            channelIds: [],
+            limit: Number.NaN,
+            offset: 0,
+          },
+          executor
+        )
+      ).rejects.toThrow("Limit must be 1-25");
+    });
+
+    test("rejects offset below 0", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        searchMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            content: "test",
+            authorIds: [],
+            channelIds: [],
+            limit: 25,
+            offset: -1,
+          },
+          executor
+        )
+      ).rejects.toThrow("Offset must be 0-9975");
+    });
+
+    test("rejects offset above 9975", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        searchMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            content: "test",
+            authorIds: [],
+            channelIds: [],
+            limit: 25,
+            offset: 9976,
+          },
+          executor
+        )
+      ).rejects.toThrow("Offset must be 0-9975");
+    });
+
+    test("rejects NaN offset", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        searchMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            content: "test",
+            authorIds: [],
+            channelIds: [],
+            limit: 25,
+            offset: Number.NaN,
+          },
+          executor
+        )
+      ).rejects.toThrow("Offset must be 0-9975");
+    });
+
+    test("rejects when no filters provided", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        searchMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            authorIds: [],
+            channelIds: [],
+            limit: 25,
+            offset: 0,
+          },
+          executor
+        )
+      ).rejects.toThrow(
+        "Search requires at least one filter: use --content, --author-id, --author-type, --channel-id, or --has"
+      );
+    });
+
+    test("rejects invalid author-type", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        searchMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            authorType: "webhook",
+            authorIds: [],
+            channelIds: [],
+            limit: 25,
+            offset: 0,
+          },
+          executor
+        )
+      ).rejects.toThrow('author-type must be "user" or "bot"');
+    });
+
+    test("rejects invalid has value", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        searchMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            has: "sticker",
+            authorIds: [],
+            channelIds: [],
+            limit: 25,
+            offset: 0,
+          },
+          executor
+        )
+      ).rejects.toThrow(
+        "has must be one of: link, embed, file, video, image, sound"
+      );
+    });
+  });
+
   // --- messagesCommand dispatcher ---
 
   describe("messagesCommand dispatcher", () => {
     test("rejects unknown subcommand", async () => {
       await expect(
         messagesCommand(["unknown"], { config: configPath })
-      ).rejects.toThrow("Usage: ddd messages <list|send|edit|delete|react>");
+      ).rejects.toThrow(
+        "Usage: ddd messages <list|send|edit|delete|react|search>"
+      );
     });
 
     test("rejects missing subcommand", async () => {
       await expect(messagesCommand([], { config: configPath })).rejects.toThrow(
-        "Usage: ddd messages <list|send|edit|delete|react>"
+        "Usage: ddd messages <list|send|edit|delete|react|search>"
       );
     });
 
@@ -488,6 +754,12 @@ describe("messages commands", () => {
       ).rejects.toThrow(
         "Usage: ddd messages react <channel_id> <message_id> <emoji>"
       );
+    });
+
+    test("rejects search without guild_id", async () => {
+      await expect(
+        messagesCommand(["search"], { config: configPath })
+      ).rejects.toThrow("Usage: ddd messages search <guild_id> [flags]");
     });
   });
 });

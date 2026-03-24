@@ -22,6 +22,17 @@ export interface MessageInfo {
   type: number;
 }
 
+export interface RawDiscordMessage {
+  author: { id: string; username: string; bot: boolean };
+  channel_id: string;
+  content: string;
+  edited_timestamp: string | null;
+  id: string;
+  pinned: boolean;
+  timestamp: string;
+  type: number;
+}
+
 export function buildMessageInfo(message: Message): MessageInfo {
   return {
     id: message.id,
@@ -44,5 +55,36 @@ export function buildMessageInfo(message: Message): MessageInfo {
       : null,
     pinned: message.pinned,
     type: message.type,
+  };
+}
+
+export function buildMessageInfoFromRaw(
+  raw: RawDiscordMessage,
+  context: {
+    guildId: string;
+    guildName: string;
+    channelNames: Map<string, string | null>;
+  }
+): MessageInfo {
+  return {
+    id: raw.id,
+    content: raw.content,
+    author: {
+      id: raw.author.id,
+      username: raw.author.username,
+      bot: raw.author.bot,
+    },
+    channel: {
+      id: raw.channel_id,
+      name: context.channelNames.get(raw.channel_id) ?? null,
+    },
+    guild: {
+      id: context.guildId,
+      name: context.guildName,
+    },
+    timestamp: raw.timestamp,
+    editedTimestamp: raw.edited_timestamp,
+    pinned: raw.pinned,
+    type: raw.type,
   };
 }

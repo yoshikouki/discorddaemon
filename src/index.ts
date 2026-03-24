@@ -16,6 +16,7 @@ Commands:
   messages edit <channel_id> <message_id> [-m content]   Edit a message
   messages delete <channel_id> <message_id>              Delete a message
   messages react <channel_id> <message_id> <emoji>       Add a reaction to a message
+  messages search <guild_id> [--content text] [flags]    Search messages across a guild
 `;
 
 function fatal(err: unknown): never {
@@ -63,6 +64,11 @@ function main(): void {
           before: { type: "string" },
           after: { type: "string" },
           around: { type: "string" },
+          "author-id": { type: "string", multiple: true },
+          "author-type": { type: "string" },
+          "channel-id": { type: "string", multiple: true },
+          has: { type: "string" },
+          offset: { type: "string" },
         },
         allowPositionals: true,
       });
