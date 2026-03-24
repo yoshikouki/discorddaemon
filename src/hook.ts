@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { HookInput, HookResult } from "./types";
 
 const DEFAULT_TIMEOUT = 30_000;
@@ -18,6 +18,7 @@ export async function executeHook(
     stdout: "pipe",
     stderr: "pipe",
     timeout,
+    cwd: dirname(resolvedPath),
   });
 
   const signal = options?.signal;

@@ -66,4 +66,18 @@ describe("executeHook", () => {
       executeHook(join(fixturesDir, "nonexistent.sh"), dummyInput)
     ).rejects.toThrow();
   });
+
+  test("sets cwd to hook parent directory for absolute path", async () => {
+    const result = await executeHook(join(fixturesDir, "cwd.sh"), dummyInput);
+    expect(result.success).toBe(true);
+    expect(result.output).toBe(fixturesDir);
+  });
+
+  test("sets cwd to hook parent directory for relative path with cwd option", async () => {
+    const result = await executeHook("cwd.sh", dummyInput, {
+      cwd: fixturesDir,
+    });
+    expect(result.success).toBe(true);
+    expect(result.output).toBe(fixturesDir);
+  });
 });
