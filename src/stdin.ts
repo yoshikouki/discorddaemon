@@ -1,5 +1,5 @@
 export async function readStdin(): Promise<string | undefined> {
-  if (Bun.stdin.isTTY) {
+  if (process.stdin.isTTY) {
     return undefined;
   }
   const text = await new Response(Bun.stdin.stream()).text();
