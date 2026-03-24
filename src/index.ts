@@ -4,11 +4,15 @@ import { channelsCommand } from "./commands/channels";
 import { initCommand } from "./commands/init";
 import { messagesCommand } from "./commands/messages";
 import { startCommand } from "./commands/start";
+import { statusCommand } from "./commands/status";
+import { stopCommand } from "./commands/stop";
 
 const USAGE = `Usage: ddd <command>
 
 Commands:
-  start [-c path]                                        Start the daemon
+  start [-c path] [-f]                                   Start the daemon (background by default)
+  stop                                                   Stop the daemon
+  status                                                 Check if the daemon is running
   init                                                   Scaffold ~/.ddd/ddd.toml and hooks/
   channels [-c path] [-t token]                          List available Discord channels
   messages list <channel_id> [-n limit]                  Fetch messages from a channel
@@ -32,11 +36,23 @@ function main(): void {
     case "start": {
       const { values } = parseArgs({
         args: process.argv.slice(3),
-        options: { config: { type: "string", short: "c" } },
+        options: {
+          config: { type: "string", short: "c" },
+          foreground: { type: "boolean", short: "f", default: false },
+        },
       });
-      startCommand({ config: values.config }).catch(fatal);
+      startCommand({
+        config: values.config,
+        foreground: values.foreground,
+      }).catch(fatal);
       break;
     }
+    case "stop":
+      stopCommand().catch(fatal);
+      break;
+    case "status":
+      statusCommand().catch(fatal);
+      break;
     case "init":
       initCommand().catch(fatal);
       break;
