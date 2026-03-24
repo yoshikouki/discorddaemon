@@ -58,6 +58,44 @@ export type MessageSearchExecutor = (
   }
 ) => Promise<MessageInfo[]>;
 
+// --- Exported pure helpers ---
+
+export function buildSearchParams(options: {
+  content?: string;
+  authorIds: string[];
+  authorType?: string;
+  channelIds: string[];
+  has?: string;
+  limit: number;
+  offset: number;
+}): URLSearchParams {
+  const params = new URLSearchParams();
+  if (options.content) {
+    params.append("q", options.content);
+  }
+  if (options.authorType) {
+    params.append("author_type", options.authorType);
+  }
+  if (options.has) {
+    params.append("has", options.has);
+  }
+  for (const id of options.authorIds) {
+    params.append("author_id", id);
+  }
+  for (const id of options.channelIds) {
+    params.append("channel_id", id);
+  }
+  params.append("limit", String(options.limit));
+  params.append("offset", String(options.offset));
+  return params;
+}
+
+export function extractSearchHits<T>(groups: T[][]): T[] {
+  return groups
+    .filter((g) => g.length > 0)
+    .map((g) => g[Math.floor(g.length / 2)]);
+}
+
 // --- Helpers ---
 
 async function fetchTextChannel(client: Client<true>, channelId: string) {
@@ -180,35 +218,23 @@ function defaultSearchExecutor(
     token,
     [GatewayIntentBits.Guilds],
     async (client) => {
-      const params = new URLSearchParams();
-      if (options.content) {
-        params.append("q", options.content);
-      }
-      if (options.authorType) {
-        params.append("author_type", options.authorType);
-      }
-      if (options.has) {
-        params.append("has", options.has);
-      }
-      for (const id of options.authorIds) {
-        params.append("author_id", id);
-      }
-      for (const id of options.channelIds) {
-        params.append("channel_id", id);
-      }
-      params.append("limit", String(options.limit));
-      params.append("offset", String(options.offset));
+      const params = buildSearchParams(options);
 
       const response = (await client.rest.get(
         `/guilds/${guildId}/messages/search`,
         { query: params }
       )) as { messages: RawDiscordMessage[][]; total_results: number };
 
-      const hits = response.messages.map(
-        (group) => group[Math.floor(group.length / 2)]
-      );
+      const hits = extractSearchHits(response.messages);
 
-      const guild = await client.guilds.fetch(guildId);
+      let guildName: string | null = null;
+      try {
+        const guild = await client.guilds.fetch(guildId);
+        guildName = guild.name;
+      } catch {
+        guildName = guildId;
+      }
+
       const channelIds = [...new Set(hits.map((m) => m.channel_id))];
       const channelNames = new Map<string, string | null>();
       for (const cid of channelIds) {
@@ -226,7 +252,7 @@ function defaultSearchExecutor(
       return hits.map((raw) =>
         buildMessageInfoFromRaw(raw, {
           guildId,
-          guildName: guild.name,
+          guildName,
           channelNames,
         })
       );
@@ -385,8 +411,10 @@ export async function searchMessages(
     throw new Error("Offset must be 0-9975");
   }
 
+  const trimmedContent = args.content?.trim() || undefined;
+
   const hasFilter =
-    args.content ||
+    trimmedContent ||
     args.authorIds.length > 0 ||
     args.authorType ||
     args.channelIds.length > 0 ||
@@ -413,7 +441,7 @@ export async function searchMessages(
 
   const config = await loadConfig(args.config);
   const messages = await executor(config.token, args.guildId, {
-    content: args.content,
+    content: trimmedContent,
     authorIds: args.authorIds,
     authorType: args.authorType,
     channelIds: args.channelIds,

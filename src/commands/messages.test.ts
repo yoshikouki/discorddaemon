@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MessageInfo } from "../message-info";
 import {
+  buildSearchParams,
   deleteMessage,
   editMessage,
+  extractSearchHits,
   listMessages,
   messagesCommand,
   reactMessage,
@@ -690,6 +692,191 @@ describe("messages commands", () => {
       ).rejects.toThrow(
         "has must be one of: link, embed, file, video, image, sound"
       );
+    });
+
+    test("rejects whitespace-only content as no filter", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        searchMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            content: "   ",
+            authorIds: [],
+            channelIds: [],
+            limit: 25,
+            offset: 0,
+          },
+          executor
+        )
+      ).rejects.toThrow(
+        "Search requires at least one filter: use --content, --author-id, --author-type, --channel-id, or --has"
+      );
+    });
+
+    test("trims content before passing to executor", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await searchMessages(
+        {
+          config: configPath,
+          guildId: "guild-1",
+          content: "  hello  ",
+          authorIds: [],
+          channelIds: [],
+          limit: 25,
+          offset: 0,
+        },
+        executor
+      );
+
+      expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
+        content: "hello",
+        authorIds: [],
+        authorType: undefined,
+        channelIds: [],
+        has: undefined,
+        limit: 25,
+        offset: 0,
+      });
+    });
+
+    test("prints nothing when executor returns empty array", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await searchMessages(
+        {
+          config: configPath,
+          guildId: "guild-1",
+          content: "no-results",
+          authorIds: [],
+          channelIds: [],
+          limit: 25,
+          offset: 0,
+        },
+        executor
+      );
+
+      expect(lines).toHaveLength(0);
+    });
+  });
+
+  // --- buildSearchParams ---
+
+  describe("buildSearchParams", () => {
+    test("sets scalar params", () => {
+      const params = buildSearchParams({
+        content: "hello",
+        authorIds: [],
+        authorType: "bot",
+        channelIds: [],
+        has: "link",
+        limit: 10,
+        offset: 50,
+      });
+
+      expect(params.get("q")).toBe("hello");
+      expect(params.get("author_type")).toBe("bot");
+      expect(params.get("has")).toBe("link");
+      expect(params.get("limit")).toBe("10");
+      expect(params.get("offset")).toBe("50");
+    });
+
+    test("repeats author_id for multiple authors", () => {
+      const params = buildSearchParams({
+        authorIds: ["user-1", "user-2", "user-3"],
+        channelIds: [],
+        limit: 25,
+        offset: 0,
+      });
+
+      expect(params.getAll("author_id")).toEqual([
+        "user-1",
+        "user-2",
+        "user-3",
+      ]);
+    });
+
+    test("repeats channel_id for multiple channels", () => {
+      const params = buildSearchParams({
+        authorIds: [],
+        channelIds: ["ch-1", "ch-2"],
+        limit: 25,
+        offset: 0,
+      });
+
+      expect(params.getAll("channel_id")).toEqual(["ch-1", "ch-2"]);
+    });
+
+    test("omits optional params when not provided", () => {
+      const params = buildSearchParams({
+        authorIds: [],
+        channelIds: [],
+        limit: 25,
+        offset: 0,
+      });
+
+      expect(params.has("q")).toBe(false);
+      expect(params.has("author_type")).toBe(false);
+      expect(params.has("has")).toBe(false);
+      expect(params.has("author_id")).toBe(false);
+      expect(params.has("channel_id")).toBe(false);
+      expect(params.get("limit")).toBe("25");
+      expect(params.get("offset")).toBe("0");
+    });
+
+    test("includes all params when fully specified", () => {
+      const params = buildSearchParams({
+        content: "test",
+        authorIds: ["u1"],
+        authorType: "user",
+        channelIds: ["c1"],
+        has: "image",
+        limit: 5,
+        offset: 100,
+      });
+
+      expect(params.get("q")).toBe("test");
+      expect(params.getAll("author_id")).toEqual(["u1"]);
+      expect(params.get("author_type")).toBe("user");
+      expect(params.getAll("channel_id")).toEqual(["c1"]);
+      expect(params.get("has")).toBe("image");
+      expect(params.get("limit")).toBe("5");
+      expect(params.get("offset")).toBe("100");
+    });
+  });
+
+  // --- extractSearchHits ---
+
+  describe("extractSearchHits", () => {
+    test("extracts middle element from 3-element groups", () => {
+      const groups = [
+        ["a", "b", "c"],
+        ["d", "e", "f"],
+      ];
+
+      expect(extractSearchHits(groups)).toEqual(["b", "e"]);
+    });
+
+    test("extracts element from single-element groups", () => {
+      const groups = [["x"], ["y"]];
+
+      expect(extractSearchHits(groups)).toEqual(["x", "y"]);
+    });
+
+    test("filters out empty groups", () => {
+      const groups = [["a", "b", "c"], [], ["d"]];
+
+      expect(extractSearchHits(groups)).toEqual(["b", "d"]);
+    });
+
+    test("returns empty array for empty input", () => {
+      expect(extractSearchHits([])).toEqual([]);
+    });
+
+    test("returns empty array when all groups are empty", () => {
+      expect(extractSearchHits([[], [], []])).toEqual([]);
     });
   });
 
