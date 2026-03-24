@@ -150,6 +150,9 @@ Edits a message. Wraps `channel.messages.edit(messageId, options)`. The bot can 
 
 ```typescript
 const channel = await client.channels.fetch(channelId);
+// After fetching, the channel is validated as text-based.
+// If the channel is null, a category, voice, or stage channel,
+// the command exits with error: "Channel <id> is not a text channel".
 const message = await channel.messages.edit(messageId, { content });
 ```
 
@@ -173,6 +176,9 @@ Deletes a message. Wraps `channel.messages.delete(messageId)`.
 
 ```typescript
 const channel = await client.channels.fetch(channelId);
+// After fetching, the channel is validated as text-based.
+// If the channel is null, a category, voice, or stage channel,
+// the command exits with error: "Channel <id> is not a text channel".
 await channel.messages.delete(messageId);
 ```
 
@@ -200,6 +206,9 @@ Adds a reaction to a message. Wraps `channel.messages.react(messageId, emoji)`.
 
 ```typescript
 const channel = await client.channels.fetch(channelId);
+// After fetching, the channel is validated as text-based.
+// If the channel is null, a category, voice, or stage channel,
+// the command exits with error: "Channel <id> is not a text channel".
 await channel.messages.react(messageId, emoji);
 ```
 
@@ -249,6 +258,7 @@ A superset of `HookInput.message` -- first six fields are identical, with three 
 |-----------|---------------|-----------|
 | Missing `<channel_id>` positional | `Usage: ddd messages <cmd> <channel_id> ...` | 1 |
 | Missing `<message_id>` positional | `Usage: ddd messages <cmd> <channel_id> <message_id> ...` | 1 |
+| Missing `<emoji>` positional (react) | `Usage: ddd messages react <channel_id> <message_id> <emoji>` | 1 |
 | Channel is null or not text-based | `Channel <id> is not a text channel` | 1 |
 | Missing content (send/edit) | `Content required: use --content or pipe to stdin` | 1 |
 | Empty content after trim (send/edit) | `Content must not be empty` | 1 |
