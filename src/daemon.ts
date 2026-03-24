@@ -6,7 +6,7 @@ import type { Config, HookInput, HookResult } from "./types";
 export type HookExecutor = (
   scriptPath: string,
   input: HookInput,
-  options?: { timeout?: number; signal?: AbortSignal }
+  options?: { timeout?: number; signal?: AbortSignal; cwd?: string }
 ) => Promise<HookResult>;
 
 function log(msg: string): void {
@@ -98,6 +98,7 @@ export class Daemon {
     const input = buildHookInput(message);
     const result = await this.hookExecutor(scriptPath, input, {
       signal: this.abortController.signal,
+      cwd: this.config.configDir,
     });
 
     if (result.timedOut) {

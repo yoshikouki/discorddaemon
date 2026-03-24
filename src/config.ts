@@ -1,9 +1,15 @@
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import type { ChannelConfig, Config } from "./types";
 
-export async function loadConfig(path = "./ddd.toml"): Promise<Config> {
-  const file = Bun.file(path);
+export const DEFAULT_CONFIG_DIR = join(homedir(), ".ddd");
+export const DEFAULT_CONFIG_PATH = join(DEFAULT_CONFIG_DIR, "ddd.toml");
+
+export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<Config> {
+  const resolvedPath = resolve(path);
+  const file = Bun.file(resolvedPath);
   if (!(await file.exists())) {
-    throw new Error(`Config file not found: ${path}`);
+    throw new Error(`Config file not found: ${resolvedPath}`);
   }
 
   const text = await file.text();
@@ -40,5 +46,6 @@ export async function loadConfig(path = "./ddd.toml"): Promise<Config> {
     }
   }
 
-  return { token, channels };
+  const configDir = dirname(resolvedPath);
+  return { token, channels, configDir };
 }

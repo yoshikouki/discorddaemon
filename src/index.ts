@@ -8,7 +8,7 @@ const USAGE = `Usage: ddd <command>
 
 Commands:
   start [-c path]      Start the daemon
-  init                 Scaffold ddd.toml and hooks/
+  init                 Scaffold ~/.ddd/ddd.toml and hooks/
   channels [-c path]   List available Discord channels
 `;
 

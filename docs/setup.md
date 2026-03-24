@@ -7,7 +7,7 @@ Getting ddd up and running from scratch.
 1. Open the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Click **New Application**, give it a name, and create
 3. Go to **Bot** in the left menu
-4. Click **Reset Token** and copy the token (you'll put this in `ddd.toml`)
+4. Click **Reset Token** and copy the token (you'll put this in `~/.ddd/ddd.toml`)
 5. On the same page, under **Privileged Gateway Intents**, enable **Message Content Intent**
 
 ## 2. Invite the Bot to Your Server
@@ -21,20 +21,25 @@ Getting ddd up and running from scratch.
 
 ## 3. Get the Channel ID
 
-1. In Discord, go to **User Settings → Advanced → Developer Mode** and turn it ON
-2. Right-click the target channel → **Copy Channel ID**
+Use the CLI to list available channels:
 
-## 4. Initialize the Project
+```bash
+ddd channels
+```
+
+Or manually: in Discord, go to **User Settings → Advanced → Developer Mode** (ON), then right-click the target channel → **Copy Channel ID**.
+
+## 4. Initialize
 
 ```bash
 ddd init
 ```
 
-This generates `ddd.toml` and `hooks/echo.sh`.
+This creates `~/.ddd/ddd.toml` and `~/.ddd/hooks/echo.sh`.
 
 ## 5. Configure
 
-Edit `ddd.toml` with your token and channel ID:
+Edit `~/.ddd/ddd.toml` with your token and channel ID:
 
 ```toml
 [bot]

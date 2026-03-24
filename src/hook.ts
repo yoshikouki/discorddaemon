@@ -6,10 +6,12 @@ const DEFAULT_TIMEOUT = 30_000;
 export async function executeHook(
   scriptPath: string,
   input: HookInput,
-  options?: { timeout?: number; signal?: AbortSignal }
+  options?: { timeout?: number; signal?: AbortSignal; cwd?: string }
 ): Promise<HookResult> {
   const timeout = options?.timeout ?? DEFAULT_TIMEOUT;
-  const resolvedPath = resolve(scriptPath);
+  const resolvedPath = options?.cwd
+    ? resolve(options.cwd, scriptPath)
+    : resolve(scriptPath);
 
   const proc = Bun.spawn([resolvedPath], {
     stdin: "pipe",

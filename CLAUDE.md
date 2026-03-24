@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 bun install              # Install dependencies
-bun run start            # Start daemon (reads ddd.toml)
+bun run start            # Start daemon (reads ~/.ddd/ddd.toml)
 bun run dev              # Start with --watch for development
 bun test                 # Run all tests (bun:test)
 bun test src/hook.test.ts  # Run a single test file
@@ -24,13 +24,14 @@ discorddaemon (ddd) is a Discord bot daemon that routes channel messages to exte
 
 - **`src/index.ts`** — CLI entrypoint. Parses args via `node:util` `parseArgs`, dispatches to commands.
 - **`src/commands/start.ts`** — `ddd start [-c path]`. Loads config, creates daemon, installs signal handlers.
-- **`src/commands/init.ts`** — `ddd init`. Scaffolds `ddd.toml` and `hooks/echo.sh`.
+- **`src/commands/init.ts`** — `ddd init`. Scaffolds `~/.ddd/ddd.toml` and `~/.ddd/hooks/echo.sh`.
+- **`src/commands/channels.ts`** — `ddd channels [-c path]`. Lists available Discord text channels as NDJSON.
 - **`src/daemon.ts`** — Discord.js Client lifecycle. Listens for `MessageCreate`, routes by channel ID, invokes hooks, sends replies.
 - **`src/hook.ts`** — Hook executor. `Bun.spawn()` with native `timeout` and `AbortSignal` support.
-- **`src/config.ts`** — Loads `ddd.toml` via `Bun.file()` + `Bun.TOML.parse()`. Falls back to `DDD_TOKEN` env var.
+- **`src/config.ts`** — Loads `~/.ddd/ddd.toml` via `Bun.file()` + `Bun.TOML.parse()`. Falls back to `DDD_TOKEN` env var. Hook paths resolve relative to config directory.
 - **`src/types.ts`** — Shared interfaces: `Config`, `ChannelConfig`, `HookInput`, `HookResult`.
 
-### Config format (ddd.toml)
+### Config format (~/.ddd/ddd.toml)
 
 ```toml
 [bot]

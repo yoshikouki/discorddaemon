@@ -6,6 +6,7 @@ export interface ChannelConfig {
 
 export interface Config {
   channels: Map<string, ChannelConfig>;
+  configDir: string;
   token: string;
 }
 

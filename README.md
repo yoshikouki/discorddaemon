@@ -16,18 +16,30 @@ bun install -g discorddaemon
 
 1. Create a Discord bot at [Discord Developer Portal](https://discord.com/developers/applications) and grab the token.
 
-2. Create `ddd.toml`:
+2. Scaffold config and hooks:
+
+```bash
+ddd init    # creates ~/.ddd/ddd.toml and ~/.ddd/hooks/echo.sh
+```
+
+3. Edit `~/.ddd/ddd.toml`:
 
 ```toml
 [bot]
-token = ""  # or set DDD_TOKEN env var
+token = "YOUR_BOT_TOKEN"  # or set DDD_TOKEN env var
 
 [channels.general]
 id = "CHANNEL_ID_HERE"
 on_message = "./hooks/echo.sh"
 ```
 
-3. Start the daemon:
+4. List available channels (optional):
+
+```bash
+ddd channels   # shows channel IDs and names as NDJSON
+```
+
+5. Start the daemon:
 
 ```bash
 ddd start

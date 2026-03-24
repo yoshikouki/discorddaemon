@@ -32,6 +32,7 @@ on_message = "./hooks/echo.sh"
 `);
     const config = await loadConfig(path);
     expect(config.token).toBe("my-token");
+    expect(config.configDir).toBe(dir);
     expect(config.channels.size).toBe(1);
     expect(config.channels.get("111")).toEqual({
       id: "111",

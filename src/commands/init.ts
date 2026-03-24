@@ -1,5 +1,6 @@
 import { chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { DEFAULT_CONFIG_DIR } from "../config";
 
 const TEMPLATE_CONFIG = `[bot]
 token = ""  # or set DDD_TOKEN env var
@@ -15,20 +16,22 @@ const TEMPLATE_HOOK = `#!/bin/sh
 cat
 `;
 
-export async function initCommand(): Promise<void> {
-  const configPath = join(process.cwd(), "ddd.toml");
+export async function initCommand(baseDir = DEFAULT_CONFIG_DIR): Promise<void> {
+  await mkdir(baseDir, { recursive: true });
+
+  const configPath = join(baseDir, "ddd.toml");
   const configFile = Bun.file(configPath);
 
   if (await configFile.exists()) {
-    throw new Error("ddd.toml already exists");
+    throw new Error(`${configPath} already exists`);
   }
 
   await Bun.write(configPath, TEMPLATE_CONFIG);
-  console.error("[ddd] Created ddd.toml");
+  console.error(`[ddd] Created ${configPath}`);
 
-  const hooksDir = join(process.cwd(), "hooks");
+  const hooksDir = join(baseDir, "hooks");
   await mkdir(hooksDir, { recursive: true });
-  console.error("[ddd] Created hooks/");
+  console.error(`[ddd] Created ${hooksDir}/`);
 
   const hookPath = join(hooksDir, "echo.sh");
   const hookFile = Bun.file(hookPath);
@@ -37,8 +40,8 @@ export async function initCommand(): Promise<void> {
   } else {
     await Bun.write(hookPath, TEMPLATE_HOOK);
     await chmod(hookPath, 0o755);
-    console.error("[ddd] Created hooks/echo.sh");
+    console.error(`[ddd] Created ${hookPath}`);
   }
 
-  console.error("\n[ddd] Ready! Edit ddd.toml, then run: ddd start");
+  console.error(`\n[ddd] Ready! Edit ${configPath}, then run: ddd start`);
 }

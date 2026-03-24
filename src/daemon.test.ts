@@ -20,7 +20,7 @@ function fakeMessage(
 }
 
 function makeConfig(channels: Map<string, ChannelConfig> = new Map()): Config {
-  return { token: "fake-token", channels };
+  return { token: "fake-token", channels, configDir: "/tmp/ddd-test" };
 }
 
 function makeChannelMap(
