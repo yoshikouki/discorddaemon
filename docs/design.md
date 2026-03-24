@@ -8,11 +8,11 @@ ddd's only runtime dependency is discord.js. TOML parsing uses Bun's built-in `B
 
 The CLI is a thin wrapper over the Discord SDK, not an opinionated abstraction layer.
 
-- **`--json` output**: Every command that produces output supports `--json` for machine consumption.
+- **NDJSON by default**: All command output is NDJSON (one JSON object per line). There is no human-readable mode and no `--json` flag — machine consumption is the default and only mode.
 - **SDK-mirrored naming**: Command names, flag names, and field names match Discord SDK terminology. No invented aliases.
 - **No hidden magic**: A foundation model that knows the Discord API should predict ddd's CLI behavior without reading docs.
 
-The anti-goal is "developer ergonomics" that comes at the cost of predictability. Short aliases and clever defaults make CLIs pleasant for humans but opaque to agents.
+The anti-goal is "developer ergonomics" that comes at the cost of predictability. Short aliases and clever defaults make CLIs pleasant for humans but opaque to agents. Short flag forms (e.g., `-n` for `--limit`, `-m` for `--content`) are acceptable when the long form mirrors SDK naming and the short form follows widespread CLI convention.
 
 ## Hooks are processes, not plugins
 
