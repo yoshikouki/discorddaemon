@@ -11,7 +11,8 @@ Commands:
 `;
 
 function fatal(err: unknown): never {
-  console.error("[ddd]", err);
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[ddd] ${message}`);
   process.exit(1);
 }
 
