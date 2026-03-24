@@ -191,11 +191,11 @@ export async function sendMessage(
   stdinReader: () => Promise<string | undefined> = readStdin
 ): Promise<void> {
   let content = args.content;
-  if (!content) {
+  if (content === undefined) {
     content = await stdinReader();
   }
 
-  if (!content) {
+  if (content === undefined) {
     throw new Error("Content required: use --content or pipe to stdin");
   }
 
@@ -219,11 +219,11 @@ export async function editMessage(
   stdinReader: () => Promise<string | undefined> = readStdin
 ): Promise<void> {
   let content = args.content;
-  if (!content) {
+  if (content === undefined) {
     content = await stdinReader();
   }
 
-  if (!content) {
+  if (content === undefined) {
     throw new Error("Content required: use --content or pipe to stdin");
   }
 

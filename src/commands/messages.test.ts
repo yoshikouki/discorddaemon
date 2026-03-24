@@ -246,6 +246,20 @@ describe("messages commands", () => {
         )
       ).rejects.toThrow("Content must not be empty");
     });
+
+    test('rejects --content "" as empty instead of falling to stdin', async () => {
+      const executor = mock(() => Promise.resolve(fakeMessage()));
+      const stdinReader = mock(() => Promise.resolve("from stdin"));
+
+      await expect(
+        sendMessage(
+          { config: configPath, channelId: "ch-1", content: "" },
+          executor,
+          stdinReader
+        )
+      ).rejects.toThrow("Content must not be empty");
+      expect(stdinReader).not.toHaveBeenCalled();
+    });
   });
 
   // --- editMessage ---
@@ -326,6 +340,25 @@ describe("messages commands", () => {
           stdinReader
         )
       ).rejects.toThrow("Content must not be empty");
+    });
+
+    test('rejects --content "" as empty instead of falling to stdin', async () => {
+      const executor = mock(() => Promise.resolve(fakeMessage()));
+      const stdinReader = mock(() => Promise.resolve("from stdin"));
+
+      await expect(
+        editMessage(
+          {
+            config: configPath,
+            channelId: "ch-1",
+            messageId: "msg-1",
+            content: "",
+          },
+          executor,
+          stdinReader
+        )
+      ).rejects.toThrow("Content must not be empty");
+      expect(stdinReader).not.toHaveBeenCalled();
     });
   });
 
