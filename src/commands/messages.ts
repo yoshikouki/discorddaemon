@@ -1,4 +1,4 @@
-import type { Client, TextBasedChannel } from "discord.js";
+import type { Client } from "discord.js";
 import { GatewayIntentBits } from "discord.js";
 import { loadConfig } from "../config";
 import { withDiscordClient } from "../discord";
@@ -41,15 +41,12 @@ export type MessageReactExecutor = (
 
 // --- Helpers ---
 
-async function fetchTextChannel(
-  client: Client<true>,
-  channelId: string
-): Promise<TextBasedChannel> {
+async function fetchTextChannel(client: Client<true>, channelId: string) {
   const channel = await client.channels.fetch(channelId);
-  if (!(channel && "messages" in channel)) {
+  if (!channel?.isTextBased()) {
     throw new Error(`Channel ${channelId} is not a text channel`);
   }
-  return channel as TextBasedChannel;
+  return channel;
 }
 
 // --- Production executors ---
@@ -90,9 +87,10 @@ function defaultSendExecutor(
     [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
     async (client) => {
       const channel = await fetchTextChannel(client, channelId);
-      const message = await (
-        channel as Extract<TextBasedChannel, { send: unknown }>
-      ).send({ content });
+      if (!channel.isSendable()) {
+        throw new Error(`Channel ${channelId} is not sendable`);
+      }
+      const message = await channel.send({ content });
       return buildMessageInfo(message);
     }
   );
