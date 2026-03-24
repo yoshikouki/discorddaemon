@@ -11,6 +11,7 @@ import {
   listMessages,
   messagesCommand,
   reactMessage,
+  recentMessages,
   searchMessages,
   sendMessage,
 } from "./messages";
@@ -762,6 +763,138 @@ describe("messages commands", () => {
     });
   });
 
+  // --- recentMessages ---
+
+  describe("recentMessages", () => {
+    test("prints each message as NDJSON line", async () => {
+      const msgs = [
+        fakeMessage(),
+        fakeMessage({ id: "msg-2", content: "second" }),
+      ];
+      const executor = mock(() => Promise.resolve(msgs));
+
+      await recentMessages(
+        {
+          config: configPath,
+          guildId: "guild-1",
+          channelIds: [],
+          limit: 50,
+        },
+        executor
+      );
+
+      expect(lines).toHaveLength(2);
+      const first = JSON.parse(lines[0]);
+      expect(first.id).toBe("msg-1");
+      expect(first.content).toBe("hello world");
+
+      const second = JSON.parse(lines[1]);
+      expect(second.id).toBe("msg-2");
+    });
+
+    test("passes options to executor", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await recentMessages(
+        {
+          config: configPath,
+          guildId: "guild-1",
+          channelIds: ["ch-1", "ch-2"],
+          limit: 75,
+        },
+        executor
+      );
+
+      expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
+        channelIds: ["ch-1", "ch-2"],
+        limit: 75,
+      });
+    });
+
+    test("uses default limit 50 via dispatcher", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await recentMessages(
+        {
+          config: configPath,
+          guildId: "guild-1",
+          channelIds: [],
+          limit: 50,
+        },
+        executor
+      );
+
+      expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
+        channelIds: [],
+        limit: 50,
+      });
+    });
+
+    test("rejects limit below 1", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        recentMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            channelIds: [],
+            limit: 0,
+          },
+          executor
+        )
+      ).rejects.toThrow("Limit must be 1-100");
+    });
+
+    test("rejects limit above 100", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        recentMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            channelIds: [],
+            limit: 101,
+          },
+          executor
+        )
+      ).rejects.toThrow("Limit must be 1-100");
+    });
+
+    test("rejects NaN limit", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        recentMessages(
+          {
+            config: configPath,
+            guildId: "guild-1",
+            channelIds: [],
+            limit: Number.NaN,
+          },
+          executor
+        )
+      ).rejects.toThrow("Limit must be 1-100");
+    });
+
+    test("prints nothing when executor returns empty array", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await recentMessages(
+        {
+          config: configPath,
+          guildId: "guild-1",
+          channelIds: [],
+          limit: 50,
+        },
+        executor
+      );
+
+      expect(lines).toHaveLength(0);
+    });
+  });
+
   // --- buildSearchParams ---
 
   describe("buildSearchParams", () => {
@@ -826,6 +959,32 @@ describe("messages commands", () => {
       expect(params.get("offset")).toBe("0");
     });
 
+    test("appends sort_by and sort_order when provided", () => {
+      const params = buildSearchParams({
+        authorIds: [],
+        channelIds: [],
+        limit: 25,
+        offset: 0,
+        sortBy: "timestamp",
+        sortOrder: "desc",
+      });
+
+      expect(params.get("sort_by")).toBe("timestamp");
+      expect(params.get("sort_order")).toBe("desc");
+    });
+
+    test("omits sort_by and sort_order when not provided", () => {
+      const params = buildSearchParams({
+        authorIds: [],
+        channelIds: [],
+        limit: 25,
+        offset: 0,
+      });
+
+      expect(params.has("sort_by")).toBe(false);
+      expect(params.has("sort_order")).toBe(false);
+    });
+
     test("includes all params when fully specified", () => {
       const params = buildSearchParams({
         content: "test",
@@ -887,13 +1046,13 @@ describe("messages commands", () => {
       await expect(
         messagesCommand(["unknown"], { config: configPath })
       ).rejects.toThrow(
-        "Usage: ddd messages <list|send|edit|delete|react|search>"
+        "Usage: ddd messages <list|send|edit|delete|react|search|recent>"
       );
     });
 
     test("rejects missing subcommand", async () => {
       await expect(messagesCommand([], { config: configPath })).rejects.toThrow(
-        "Usage: ddd messages <list|send|edit|delete|react|search>"
+        "Usage: ddd messages <list|send|edit|delete|react|search|recent>"
       );
     });
 
@@ -947,6 +1106,12 @@ describe("messages commands", () => {
       await expect(
         messagesCommand(["search"], { config: configPath })
       ).rejects.toThrow("Usage: ddd messages search <guild_id> [flags]");
+    });
+
+    test("rejects recent without guild_id", async () => {
+      await expect(
+        messagesCommand(["recent"], { config: configPath })
+      ).rejects.toThrow("Usage: ddd messages recent <guild_id> [flags]");
     });
   });
 });

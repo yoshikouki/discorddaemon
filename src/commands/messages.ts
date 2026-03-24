@@ -58,6 +58,15 @@ export type MessageSearchExecutor = (
   }
 ) => Promise<MessageInfo[]>;
 
+export type MessageRecentExecutor = (
+  token: string,
+  guildId: string,
+  options: {
+    channelIds: string[];
+    limit: number;
+  }
+) => Promise<MessageInfo[]>;
+
 // --- Exported pure helpers ---
 
 export function buildSearchParams(options: {
@@ -68,6 +77,8 @@ export function buildSearchParams(options: {
   has?: string;
   limit: number;
   offset: number;
+  sortBy?: string;
+  sortOrder?: string;
 }): URLSearchParams {
   const params = new URLSearchParams();
   if (options.content) {
@@ -87,6 +98,12 @@ export function buildSearchParams(options: {
   }
   params.append("limit", String(options.limit));
   params.append("offset", String(options.offset));
+  if (options.sortBy) {
+    params.append("sort_by", options.sortBy);
+  }
+  if (options.sortOrder) {
+    params.append("sort_order", options.sortOrder);
+  }
   return params;
 }
 
@@ -250,6 +267,79 @@ function defaultSearchExecutor(
       }
 
       return hits.map((raw) =>
+        buildMessageInfoFromRaw(raw, {
+          guildId,
+          guildName,
+          channelNames,
+        })
+      );
+    }
+  );
+}
+
+function defaultRecentExecutor(
+  token: string,
+  guildId: string,
+  options: {
+    channelIds: string[];
+    limit: number;
+  }
+): Promise<MessageInfo[]> {
+  return withDiscordClient(
+    token,
+    [GatewayIntentBits.Guilds],
+    async (client) => {
+      const pageSize = 25;
+      const allHits: RawDiscordMessage[] = [];
+
+      for (let offset = 0; offset < options.limit; offset += pageSize) {
+        const remaining = options.limit - offset;
+        const currentLimit = Math.min(pageSize, remaining);
+        const params = buildSearchParams({
+          authorIds: [],
+          channelIds: options.channelIds,
+          limit: currentLimit,
+          offset,
+          sortBy: "timestamp",
+          sortOrder: "desc",
+        });
+
+        const response = (await client.rest.get(
+          `/guilds/${guildId}/messages/search`,
+          { query: params }
+        )) as { messages: RawDiscordMessage[][]; total_results: number };
+
+        const hits = extractSearchHits(response.messages);
+        allHits.push(...hits);
+
+        if (hits.length < currentLimit) {
+          break;
+        }
+      }
+
+      let guildName: string | null = null;
+      try {
+        const guild = await client.guilds.fetch(guildId);
+        guildName = guild.name;
+      } catch {
+        guildName = guildId;
+      }
+
+      const channelIds = [...new Set(allHits.map((m) => m.channel_id))];
+      const channelNames = new Map<string, string | null>();
+      for (const cid of channelIds) {
+        try {
+          const ch = await client.channels.fetch(cid);
+          channelNames.set(
+            cid,
+            ch && "name" in ch ? (ch.name as string) : null
+          );
+        } catch {
+          channelNames.set(cid, null);
+        }
+      }
+
+      return allHits.map((raw) =>
         buildMessageInfoFromRaw(raw, {
           guildId,
           guildName,
@@ -455,6 +545,30 @@ export async function searchMessages(
   }
 }
 
+export async function recentMessages(
+  args: {
+    config?: string;
+    guildId: string;
+    channelIds: string[];
+    limit: number;
+  },
+  executor: MessageRecentExecutor = defaultRecentExecutor
+): Promise<void> {
+  if (!(args.limit >= 1 && args.limit <= 100)) {
+    throw new Error("Limit must be 1-100");
+  }
+
+  const config = await loadConfig(args.config);
+  const messages = await executor(config.token, args.guildId, {
+    channelIds: args.channelIds,
+    limit: args.limit,
+  });
+
+  for (const msg of messages) {
+    console.log(JSON.stringify(msg));
+  }
+}
+
 // --- Dispatcher helpers ---
 
 interface DispatcherValues {
@@ -562,6 +676,19 @@ function dispatchSearch(positionals: string[], values: DispatcherValues) {
   });
 }
 
+function dispatchRecent(positionals: string[], values: DispatcherValues) {
+  const guildId = positionals[1];
+  if (!guildId) {
+    throw new Error("Usage: ddd messages recent <guild_id> [flags]");
+  }
+  return recentMessages({
+    config: values.config,
+    guildId,
+    channelIds: values["channel-id"] ?? [],
+    limit: values.limit ? Number.parseInt(values.limit, 10) : 50,
+  });
+}
+
 // --- Dispatcher ---
 
 export async function messagesCommand(
@@ -589,9 +716,12 @@ export async function messagesCommand(
     case "search":
       await dispatchSearch(positionals, values);
       break;
+    case "recent":
+      await dispatchRecent(positionals, values);
+      break;
     default:
       throw new Error(
-        "Usage: ddd messages <list|send|edit|delete|react|search> ..."
+        "Usage: ddd messages <list|send|edit|delete|react|search|recent> ..."
       );
   }
 }
