@@ -8,6 +8,7 @@ import {
   deleteMessage,
   editMessage,
   extractSearchHits,
+  type GuildResolverFn,
   listMessages,
   messagesCommand,
   reactMessage,
@@ -766,6 +767,11 @@ describe("messages commands", () => {
   // --- recentMessages ---
 
   describe("recentMessages", () => {
+    const stubResolver: GuildResolverFn = mock(
+      (_token, _configGuild, cliGuild) =>
+        cliGuild ? Promise.resolve(cliGuild) : Promise.resolve("resolved-guild")
+    );
+
     test("prints each message as NDJSON line", async () => {
       const msgs = [
         fakeMessage(),
@@ -780,7 +786,8 @@ describe("messages commands", () => {
           channelIds: [],
           limit: 50,
         },
-        executor
+        executor,
+        stubResolver
       );
 
       expect(lines).toHaveLength(2);
@@ -802,7 +809,8 @@ describe("messages commands", () => {
           channelIds: ["ch-1", "ch-2"],
           limit: 75,
         },
-        executor
+        executor,
+        stubResolver
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
@@ -821,7 +829,8 @@ describe("messages commands", () => {
           channelIds: [],
           limit: 50,
         },
-        executor
+        executor,
+        stubResolver
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
@@ -841,7 +850,8 @@ describe("messages commands", () => {
             channelIds: [],
             limit: 0,
           },
-          executor
+          executor,
+          stubResolver
         )
       ).rejects.toThrow("Limit must be 1-100");
     });
@@ -857,7 +867,8 @@ describe("messages commands", () => {
             channelIds: [],
             limit: 101,
           },
-          executor
+          executor,
+          stubResolver
         )
       ).rejects.toThrow("Limit must be 1-100");
     });
@@ -873,7 +884,8 @@ describe("messages commands", () => {
             channelIds: [],
             limit: Number.NaN,
           },
-          executor
+          executor,
+          stubResolver
         )
       ).rejects.toThrow("Limit must be 1-100");
     });
@@ -888,10 +900,140 @@ describe("messages commands", () => {
           channelIds: [],
           limit: 50,
         },
-        executor
+        executor,
+        stubResolver
       );
 
       expect(lines).toHaveLength(0);
+    });
+
+    // --- Guild resolution tests ---
+
+    test("CLI guild_id takes priority over config default_guild", async () => {
+      await Bun.write(
+        configPath,
+        '[bot]\ntoken = "fake-token"\ndefault_guild = "config-guild"\n'
+      );
+      const executor = mock(() => Promise.resolve([]));
+      const resolver: GuildResolverFn = mock((_token, configGuild, cliGuild) =>
+        Promise.resolve(cliGuild ?? configGuild ?? "fallback")
+      );
+
+      await recentMessages(
+        {
+          config: configPath,
+          guildId: "cli-guild",
+          channelIds: [],
+          limit: 50,
+        },
+        executor,
+        resolver
+      );
+
+      expect(resolver).toHaveBeenCalledWith(
+        "fake-token",
+        "config-guild",
+        "cli-guild"
+      );
+      expect(executor).toHaveBeenCalledWith("fake-token", "cli-guild", {
+        channelIds: [],
+        limit: 50,
+      });
+    });
+
+    test("config default_guild used when no CLI argument", async () => {
+      await Bun.write(
+        configPath,
+        '[bot]\ntoken = "fake-token"\ndefault_guild = "config-guild"\n'
+      );
+      const executor = mock(() => Promise.resolve([]));
+      const resolver: GuildResolverFn = mock((_token, configGuild, cliGuild) =>
+        Promise.resolve(cliGuild ?? configGuild ?? "fallback")
+      );
+
+      await recentMessages(
+        {
+          config: configPath,
+          channelIds: [],
+          limit: 50,
+        },
+        executor,
+        resolver
+      );
+
+      expect(resolver).toHaveBeenCalledWith(
+        "fake-token",
+        "config-guild",
+        undefined
+      );
+      expect(executor).toHaveBeenCalledWith("fake-token", "config-guild", {
+        channelIds: [],
+        limit: 50,
+      });
+    });
+
+    test("auto-detect works with single guild via resolver", async () => {
+      const executor = mock(() => Promise.resolve([]));
+      const resolver: GuildResolverFn = mock(() =>
+        Promise.resolve("auto-guild")
+      );
+
+      await recentMessages(
+        {
+          config: configPath,
+          channelIds: [],
+          limit: 50,
+        },
+        executor,
+        resolver
+      );
+
+      expect(executor).toHaveBeenCalledWith("fake-token", "auto-guild", {
+        channelIds: [],
+        limit: 50,
+      });
+    });
+
+    test("error on multiple guilds via resolver", async () => {
+      const executor = mock(() => Promise.resolve([]));
+      const resolver: GuildResolverFn = mock(() =>
+        Promise.reject(
+          new Error(
+            "Multiple guilds found. Specify guild_id or set default_guild in config:\n  111 Guild A\n  222 Guild B"
+          )
+        )
+      );
+
+      await expect(
+        recentMessages(
+          {
+            config: configPath,
+            channelIds: [],
+            limit: 50,
+          },
+          executor,
+          resolver
+        )
+      ).rejects.toThrow("Multiple guilds found");
+    });
+
+    test("error on no guilds via resolver", async () => {
+      const executor = mock(() => Promise.resolve([]));
+      const resolver: GuildResolverFn = mock(() =>
+        Promise.reject(new Error("Bot is not in any guild"))
+      );
+
+      await expect(
+        recentMessages(
+          {
+            config: configPath,
+            channelIds: [],
+            limit: 50,
+          },
+          executor,
+          resolver
+        )
+      ).rejects.toThrow("Bot is not in any guild");
     });
   });
 
@@ -1108,10 +1250,6 @@ describe("messages commands", () => {
       ).rejects.toThrow("Usage: ddd messages search <guild_id> [flags]");
     });
 
-    test("rejects recent without guild_id", async () => {
-      await expect(
-        messagesCommand(["recent"], { config: configPath })
-      ).rejects.toThrow("Usage: ddd messages recent <guild_id> [flags]");
-    });
+    // NOTE: "recent" no longer rejects without guild_id — guild is auto-resolved
   });
 });

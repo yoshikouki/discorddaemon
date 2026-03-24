@@ -1,5 +1,6 @@
 [bot]
 token = "" # or set DDD_TOKEN env var
+default_guild = ""  # optional: default guild ID for 'recent' command
 
 [channels.general]
 id = "CHANNEL_ID_HERE"

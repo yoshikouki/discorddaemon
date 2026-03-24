@@ -197,6 +197,55 @@ on_message = "./hooks/b.sh"
     expect(config.channels.get("111")?.name).toBe("general");
     expect(config.channels.get("222")?.name).toBe("random");
   });
+
+  test("parses default_guild from config", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+default_guild = "123456789"
+`);
+    const config = await loadConfig(path);
+    expect(config.defaultGuild).toBe("123456789");
+  });
+
+  test("defaultGuild is undefined when not set", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+`);
+    const config = await loadConfig(path);
+    expect(config.defaultGuild).toBeUndefined();
+  });
+
+  test("defaultGuild is undefined for empty string", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+default_guild = ""
+`);
+    const config = await loadConfig(path);
+    expect(config.defaultGuild).toBeUndefined();
+  });
+
+  test("defaultGuild is undefined for whitespace-only string", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+default_guild = "   "
+`);
+    const config = await loadConfig(path);
+    expect(config.defaultGuild).toBeUndefined();
+  });
+
+  test("trims whitespace from default_guild", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+default_guild = "  123456789  "
+`);
+    const config = await loadConfig(path);
+    expect(config.defaultGuild).toBe("123456789");
+  });
 });
 
 describe("resolveToken", () => {

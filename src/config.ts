@@ -75,6 +75,11 @@ export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<Config> {
     }
   }
 
+  const defaultGuild =
+    typeof bot?.default_guild === "string" && bot.default_guild.trim()
+      ? bot.default_guild.trim()
+      : undefined;
+
   const configDir = dirname(resolvedPath);
-  return { token, channels, configDir };
+  return { token, channels, configDir, defaultGuild };
 }

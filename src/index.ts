@@ -21,7 +21,7 @@ Commands:
   messages delete <channel_id> <message_id>              Delete a message
   messages react <channel_id> <message_id> <emoji>       Add a reaction to a message
   messages search <guild_id> [--content text] [flags]    Search messages across a guild
-  messages recent <guild_id> [-n limit]                  Fetch recent messages across a guild
+  messages recent [guild_id] [-n limit]                  Fetch recent messages across a guild
 `;
 
 function fatal(err: unknown): never {

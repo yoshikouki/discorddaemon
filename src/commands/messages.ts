@@ -67,6 +67,12 @@ export type MessageRecentExecutor = (
   }
 ) => Promise<MessageInfo[]>;
 
+export type GuildResolverFn = (
+  token: string,
+  configGuild?: string,
+  cliGuild?: string
+) => Promise<string>;
+
 // --- Exported pure helpers ---
 
 export function buildSearchParams(options: {
@@ -350,6 +356,39 @@ function defaultRecentExecutor(
   );
 }
 
+export function defaultGuildResolver(
+  token: string,
+  configGuild?: string,
+  cliGuild?: string
+): Promise<string> {
+  if (cliGuild) {
+    return Promise.resolve(cliGuild);
+  }
+  if (configGuild) {
+    return Promise.resolve(configGuild);
+  }
+  return withDiscordClient(token, [GatewayIntentBits.Guilds], (client) => {
+    const guilds = client.guilds.cache;
+    if (guilds.size === 0) {
+      throw new Error("Bot is not in any guild");
+    }
+    if (guilds.size === 1) {
+      const first = guilds.first();
+      if (!first) {
+        throw new Error("Bot is not in any guild");
+      }
+      return Promise.resolve(first.id);
+    }
+    const list = guilds
+      .map((g) => `  ${g.id} ${g.name}`)
+      .toJSON()
+      .join("\n");
+    throw new Error(
+      `Multiple guilds found. Specify guild_id or set default_guild in config:\n${list}`
+    );
+  });
+}
+
 // --- Subcommands ---
 
 export async function listMessages(
@@ -548,18 +587,24 @@ export async function searchMessages(
 export async function recentMessages(
   args: {
     config?: string;
-    guildId: string;
+    guildId?: string;
     channelIds: string[];
     limit: number;
   },
-  executor: MessageRecentExecutor = defaultRecentExecutor
+  executor: MessageRecentExecutor = defaultRecentExecutor,
+  guildResolver: GuildResolverFn = defaultGuildResolver
 ): Promise<void> {
   if (!(args.limit >= 1 && args.limit <= 100)) {
     throw new Error("Limit must be 1-100");
   }
 
   const config = await loadConfig(args.config);
-  const messages = await executor(config.token, args.guildId, {
+  const guildId = await guildResolver(
+    config.token,
+    config.defaultGuild,
+    args.guildId
+  );
+  const messages = await executor(config.token, guildId, {
     channelIds: args.channelIds,
     limit: args.limit,
   });
@@ -677,10 +722,7 @@ function dispatchSearch(positionals: string[], values: DispatcherValues) {
 }
 
 function dispatchRecent(positionals: string[], values: DispatcherValues) {
-  const guildId = positionals[1];
-  if (!guildId) {
-    throw new Error("Usage: ddd messages recent <guild_id> [flags]");
-  }
+  const guildId = positionals[1]; // may be undefined — resolved inside recentMessages
   return recentMessages({
     config: values.config,
     guildId,

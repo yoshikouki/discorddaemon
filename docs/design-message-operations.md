@@ -23,7 +23,7 @@ ddd messages edit <channel_id> <message_id> [flags]
 ddd messages delete <channel_id> <message_id> [flags]
 ddd messages react <channel_id> <message_id> <emoji> [flags]
 ddd messages search <guild_id> [flags]
-ddd messages recent <guild_id> [flags]
+ddd messages recent [guild_id] [flags]
 ```
 
 All commands accept `-c / --config <path>` to specify the config file (for token resolution). No command requires the channel to be registered in the config; the config is only used for the bot token.
@@ -343,9 +343,15 @@ return hits.map((raw: RawMessage) => buildMessageInfoFromRaw(raw, {
 
 ---
 
-### 2.7 `ddd messages recent <guild_id>`
+### 2.7 `ddd messages recent [guild_id]`
 
 **Agent-native command.** Fetches recent messages from all (or selected) channels in a guild. An AI agent just asks "what's been happening recently?" — no Discord API knowledge needed.
+
+**Guild ID resolution (in order):**
+1. CLI argument `guild_id` if provided
+2. Config `[bot] default_guild` if set
+3. Auto-detect: if bot is in exactly 1 guild, use it
+4. Multiple guilds: error with list of guilds
 
 Internally uses `GET /guilds/{guild.id}/messages/search` with `sort_by=timestamp`, `sort_order=desc`, and auto-pagination.
 
@@ -375,7 +381,10 @@ The 1-100 range is a product constraint (response time and noise), not an API li
 **Channel filtering:**
 
 ```bash
-# All channels, latest 50 messages
+# All channels, latest 50 messages (auto-resolves guild)
+ddd messages recent
+
+# Explicit guild ID
 ddd messages recent <guild_id>
 
 # Specific channels, latest 75 messages
@@ -496,7 +505,8 @@ Both are the single source of truth for message serialization. `HookInput.messag
 | `--offset` out of range (< 0 or > 9975) | `Offset must be 0-9975` | 1 |
 | `--author-type` invalid value | `author-type must be "user" or "bot"` | 1 |
 | `--has` invalid value | `has must be one of: link, embed, file, video, image, sound` | 1 |
-| Missing `<guild_id>` positional (recent) | `Usage: ddd messages recent <guild_id> [flags]` | 1 |
+| Multiple guilds, no guild_id (recent) | `Multiple guilds found. Specify guild_id or set default_guild in config:\n  <id> <name>` | 1 |
+| Bot not in any guild (recent) | `Bot is not in any guild` | 1 |
 | `--limit` out of range for recent (< 1 or > 100) | `Limit must be 1-100` | 1 |
 | Discord API errors | Error message forwarded | 1 |
 
@@ -615,5 +625,5 @@ Commands:
   messages delete <channel_id> <message_id>              Delete a message
   messages react <channel_id> <message_id> <emoji>       Add a reaction to a message
   messages search <guild_id> [--content text] [flags]    Search messages across a guild
-  messages recent <guild_id> [-n limit]                  Fetch recent messages across a guild
+  messages recent [guild_id] [-n limit]                  Fetch recent messages across a guild
 ```
