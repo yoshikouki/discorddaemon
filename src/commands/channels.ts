@@ -24,6 +24,29 @@ const TEXT_CHANNEL_TYPES = new Set([
 
 export type ChannelFetcher = (token: string) => Promise<ChannelInfo[]>;
 
+function toChannelInfo(
+  guild: { id: string; name: string },
+  channel: {
+    id: string;
+    name: string;
+    type: ChannelType;
+    parentId?: string | null;
+    parent?: { name: string } | null;
+  },
+  position: number | null
+): ChannelInfo {
+  return {
+    guild_id: guild.id,
+    guild_name: guild.name,
+    channel_id: channel.id,
+    channel_name: channel.name,
+    type: ChannelType[channel.type],
+    parent_id: channel.parentId ?? null,
+    parent_name: channel.parent?.name ?? null,
+    position,
+  };
+}
+
 export async function fetchDiscordChannels(
   token: string
 ): Promise<ChannelInfo[]> {
@@ -41,21 +64,23 @@ export async function fetchDiscordChannels(
     const channels: ChannelInfo[] = [];
 
     for (const guild of client.guilds.cache.values()) {
+      const seen = new Set<string>();
+
       for (const channel of guild.channels.cache.values()) {
         if (!TEXT_CHANNEL_TYPES.has(channel.type)) {
           continue;
         }
+        seen.add(channel.id);
+        const pos = "position" in channel ? (channel.position as number) : null;
+        channels.push(toChannelInfo(guild, channel, pos));
+      }
 
-        channels.push({
-          guild_id: guild.id,
-          guild_name: guild.name,
-          channel_id: channel.id,
-          channel_name: channel.name,
-          type: ChannelType[channel.type],
-          parent_id: "parentId" in channel ? (channel.parentId ?? null) : null,
-          parent_name: channel.parent?.name ?? null,
-          position: "position" in channel ? channel.position : null,
-        });
+      // Explicitly fetch active threads to cover any not already in cache
+      const { threads } = await guild.channels.fetchActiveThreads();
+      for (const thread of threads.values()) {
+        if (!seen.has(thread.id)) {
+          channels.push(toChannelInfo(guild, thread, null));
+        }
       }
     }
 
