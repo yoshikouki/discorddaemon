@@ -159,7 +159,7 @@ export async function listMessages(
   },
   executor: MessageListExecutor = defaultListExecutor
 ): Promise<void> {
-  if (args.limit < 1 || args.limit > 100) {
+  if (!(args.limit >= 1 && args.limit <= 100)) {
     throw new Error("Limit must be 1-100");
   }
 

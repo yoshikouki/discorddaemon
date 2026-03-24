@@ -131,6 +131,17 @@ describe("messages commands", () => {
       ).rejects.toThrow("Limit must be 1-100");
     });
 
+    test("rejects NaN limit (e.g. --limit abc)", async () => {
+      const executor = mock(() => Promise.resolve([]));
+
+      await expect(
+        listMessages(
+          { config: configPath, channelId: "ch-1", limit: Number.NaN },
+          executor
+        )
+      ).rejects.toThrow("Limit must be 1-100");
+    });
+
     test("rejects mutually exclusive flags", async () => {
       const executor = mock(() => Promise.resolve([]));
 
