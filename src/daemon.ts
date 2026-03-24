@@ -1,6 +1,7 @@
 import type { Message } from "discord.js";
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { executeHook } from "./hook";
+import { buildMessageInfo } from "./message-info";
 import type { Config, HookInput, HookResult } from "./types";
 
 export type HookExecutor = (
@@ -14,23 +15,15 @@ function log(msg: string): void {
 }
 
 export function buildHookInput(message: Message): HookInput {
+  const info = buildMessageInfo(message);
   return {
     message: {
-      id: message.id,
-      content: message.content,
-      author: {
-        id: message.author.id,
-        username: message.author.username,
-        bot: message.author.bot,
-      },
-      channel: {
-        id: message.channelId,
-        name: "name" in message.channel ? message.channel.name : null,
-      },
-      guild: message.guild
-        ? { id: message.guild.id, name: message.guild.name }
-        : null,
-      timestamp: message.createdAt.toISOString(),
+      id: info.id,
+      content: info.content,
+      author: info.author,
+      channel: info.channel,
+      guild: info.guild,
+      timestamp: info.timestamp,
     },
   };
 }
