@@ -10,7 +10,7 @@ const USAGE = `Usage: ddd <command>
 Commands:
   start [-c path]                                        Start the daemon
   init                                                   Scaffold ~/.ddd/ddd.toml and hooks/
-  channels [-c path]                                     List available Discord channels
+  channels [-c path] [-t token]                          List available Discord channels
   messages list <channel_id> [-n limit]                  Fetch messages from a channel
   messages send <channel_id> [-m content]                Send a message to a channel
   messages edit <channel_id> <message_id> [-m content]   Edit a message
@@ -42,9 +42,15 @@ function main(): void {
     case "channels": {
       const { values: channelsValues } = parseArgs({
         args: process.argv.slice(3),
-        options: { config: { type: "string", short: "c" } },
+        options: {
+          config: { type: "string", short: "c" },
+          token: { type: "string", short: "t" },
+        },
       });
-      channelsCommand({ config: channelsValues.config }).catch(fatal);
+      channelsCommand({
+        config: channelsValues.config,
+        token: channelsValues.token,
+      }).catch(fatal);
       break;
     }
     case "messages": {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig } from "./config";
+import { loadConfig, resolveToken } from "./config";
 
 describe("loadConfig", () => {
   let dir: string;
@@ -182,5 +182,80 @@ on_message = "./hooks/b.sh"
     expect(config.channels.size).toBe(2);
     expect(config.channels.get("111")?.name).toBe("general");
     expect(config.channels.get("222")?.name).toBe("random");
+  });
+});
+
+describe("resolveToken", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "ddd-resolve-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true });
+  });
+
+  test("returns explicit token argument first", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "env-token";
+    try {
+      const configPath = join(dir, "ddd.toml");
+      await Bun.write(configPath, '[bot]\ntoken = "config-token"\n');
+      const token = await resolveToken({
+        token: "explicit",
+        config: configPath,
+      });
+      expect(token).toBe("explicit");
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
+  });
+
+  test("returns DDD_TOKEN env when no explicit token", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "env-token";
+    try {
+      const token = await resolveToken();
+      expect(token).toBe("env-token");
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
+  });
+
+  test("falls back to toml token when no env var", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "";
+    try {
+      const configPath = join(dir, "ddd.toml");
+      await Bun.write(configPath, '[bot]\ntoken = "toml-token"\n');
+      const token = await resolveToken({ config: configPath });
+      expect(token).toBe("toml-token");
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
+  });
+
+  test("does not error when toml file does not exist", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "env-token";
+    try {
+      const token = await resolveToken({ config: join(dir, "missing.toml") });
+      expect(token).toBe("env-token");
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
+  });
+
+  test("throws when no token source available", async () => {
+    const original = process.env.DDD_TOKEN;
+    process.env.DDD_TOKEN = "";
+    try {
+      await expect(
+        resolveToken({ config: join(dir, "missing.toml") })
+      ).rejects.toThrow("Bot token is required");
+    } finally {
+      process.env.DDD_TOKEN = original;
+    }
   });
 });

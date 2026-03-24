@@ -5,6 +5,34 @@ import type { ChannelConfig, Config } from "./types";
 export const DEFAULT_CONFIG_DIR = join(homedir(), ".ddd");
 export const DEFAULT_CONFIG_PATH = join(DEFAULT_CONFIG_DIR, "ddd.toml");
 
+export async function resolveToken(opts?: {
+  token?: string;
+  config?: string;
+}): Promise<string> {
+  if (opts?.token) {
+    return opts.token;
+  }
+
+  if (process.env.DDD_TOKEN) {
+    return process.env.DDD_TOKEN;
+  }
+
+  const configPath = resolve(opts?.config ?? DEFAULT_CONFIG_PATH);
+  const file = Bun.file(configPath);
+  if (await file.exists()) {
+    const text = await file.text();
+    const parsed = Bun.TOML.parse(text) as Record<string, unknown>;
+    const bot = parsed.bot as Record<string, string> | undefined;
+    if (bot?.token) {
+      return bot.token;
+    }
+  }
+
+  throw new Error(
+    "Bot token is required: pass -t token, set DDD_TOKEN env var, or set [bot] token in ddd.toml"
+  );
+}
+
 export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<Config> {
   const resolvedPath = resolve(path);
   const file = Bun.file(resolvedPath);
