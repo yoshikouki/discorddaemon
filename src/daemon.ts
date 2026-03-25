@@ -1,6 +1,7 @@
 import type { Message } from "discord.js";
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { executeHook } from "./hook";
+import { IpcServer } from "./ipc/server";
 import { buildMessageInfo } from "./message-info";
 import type { Config, HookInput, HookResult } from "./types";
 
@@ -33,6 +34,7 @@ export class Daemon {
   private readonly config: Config;
   private readonly abortController: AbortController;
   private readonly hookExecutor: HookExecutor;
+  private ipcServer: IpcServer | null = null;
 
   constructor(config: Config, hookExecutor?: HookExecutor) {
     this.config = config;
@@ -51,6 +53,13 @@ export class Daemon {
     this.client.once(Events.ClientReady, (c) => {
       log(`Logged in as ${c.user.tag}`);
       log(`Watching ${this.config.channels.size} channel(s)`);
+
+      // Start IPC server after gateway is ready
+      this.ipcServer = new IpcServer(c, this.config.token);
+      this.ipcServer.start().catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        log(`Failed to start IPC server: ${msg}`);
+      });
     });
 
     this.client.on(Events.MessageCreate, (message) => {
@@ -66,6 +75,7 @@ export class Daemon {
 
   stop(): void {
     log("Shutting down...");
+    this.ipcServer?.stop();
     this.abortController.abort();
     this.client.destroy();
     log("Stopped");

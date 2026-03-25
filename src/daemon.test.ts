@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { Message } from "discord.js";
 import { buildHookInput, Daemon } from "./daemon";
+import type { IpcServer } from "./ipc/server";
 import type { ChannelConfig, Config, HookResult } from "./types";
 
 function fakeMessage(
@@ -166,5 +167,32 @@ describe("Daemon.runHook", () => {
     await (daemon as any).runHook(msg, "./hooks/test.sh");
 
     expect(msg.reply).toHaveBeenCalled();
+  });
+});
+
+describe("Daemon IPC integration", () => {
+  test("stop() calls ipcServer.stop() before destroying client", () => {
+    const config = makeConfig();
+    const daemon = new Daemon(config);
+
+    // Simulate that an IPC server was started
+    const stopFn = mock(() => undefined);
+    const fakeIpcServer = { stop: stopFn } as unknown as IpcServer;
+    (daemon as any).ipcServer = fakeIpcServer;
+
+    daemon.stop();
+
+    expect(stopFn).toHaveBeenCalledTimes(1);
+  });
+
+  test("stop() works safely when ipcServer is null", () => {
+    const config = makeConfig();
+    const daemon = new Daemon(config);
+
+    // ipcServer is null by default
+    expect((daemon as any).ipcServer).toBeNull();
+
+    // Should not throw
+    daemon.stop();
   });
 });
