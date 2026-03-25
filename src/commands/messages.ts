@@ -9,6 +9,15 @@ import {
   type RawDiscordMessage,
 } from "../message-info";
 import { readStdin } from "../stdin";
+import {
+  VALID_AUTHOR_TYPES,
+  VALID_HAS_VALUES,
+  validateEnum,
+  validateLimit,
+  validateMutuallyExclusive,
+  validateOffset,
+  validateSearchFilters,
+} from "../validators";
 
 // --- DI types ---
 
@@ -129,7 +138,190 @@ async function fetchTextChannel(client: Client<true>, channelId: string) {
   return channel;
 }
 
-// --- Production executors ---
+async function resolveGuildContext(
+  client: Client<true>,
+  guildId: string
+): Promise<{
+  guildName: string | null;
+}> {
+  let guildName: string | null = null;
+  try {
+    const guild = await client.guilds.fetch(guildId);
+    guildName = guild.name;
+  } catch {
+    guildName = guildId;
+  }
+  return { guildName };
+}
+
+async function resolveChannelNames(
+  client: Client<true>,
+  channelIds: string[]
+): Promise<Map<string, string | null>> {
+  const channelNames = new Map<string, string | null>();
+  for (const cid of channelIds) {
+    try {
+      const ch = await client.channels.fetch(cid);
+      channelNames.set(cid, ch && "name" in ch ? (ch.name as string) : null);
+    } catch {
+      channelNames.set(cid, null);
+    }
+  }
+  return channelNames;
+}
+
+// --- Impl functions (business logic, used by both one-shot and IPC) ---
+
+export async function listMessagesImpl(
+  client: Client<true>,
+  channelId: string,
+  options: { limit: number; before?: string; after?: string; around?: string }
+): Promise<MessageInfo[]> {
+  const channel = await fetchTextChannel(client, channelId);
+  const fetchOpts: Record<string, unknown> = { limit: options.limit };
+  if (options.before) {
+    fetchOpts.before = options.before;
+  }
+  if (options.after) {
+    fetchOpts.after = options.after;
+  }
+  if (options.around) {
+    fetchOpts.around = options.around;
+  }
+  const messages = await channel.messages.fetch(fetchOpts);
+  return [...messages.values()].map(buildMessageInfo);
+}
+
+export async function sendMessageImpl(
+  client: Client<true>,
+  channelId: string,
+  content: string
+): Promise<MessageInfo> {
+  const channel = await fetchTextChannel(client, channelId);
+  if (!channel.isSendable()) {
+    throw new Error(`Channel ${channelId} is not sendable`);
+  }
+  const message = await channel.send({ content });
+  return buildMessageInfo(message);
+}
+
+export async function editMessageImpl(
+  client: Client<true>,
+  channelId: string,
+  messageId: string,
+  content: string
+): Promise<MessageInfo> {
+  const channel = await fetchTextChannel(client, channelId);
+  const message = await channel.messages.edit(messageId, { content });
+  return buildMessageInfo(message);
+}
+
+export async function deleteMessageImpl(
+  client: Client<true>,
+  channelId: string,
+  messageId: string
+): Promise<void> {
+  const channel = await fetchTextChannel(client, channelId);
+  await channel.messages.delete(messageId);
+}
+
+export async function reactMessageImpl(
+  client: Client<true>,
+  channelId: string,
+  messageId: string,
+  emoji: string
+): Promise<void> {
+  const channel = await fetchTextChannel(client, channelId);
+  await channel.messages.react(messageId, emoji);
+}
+
+export async function searchMessagesImpl(
+  client: Client<true>,
+  guildId: string,
+  options: {
+    content?: string;
+    authorIds: string[];
+    authorType?: string;
+    channelIds: string[];
+    has?: string;
+    limit: number;
+    offset: number;
+  }
+): Promise<MessageInfo[]> {
+  const params = buildSearchParams(options);
+
+  const response = (await client.rest.get(
+    `/guilds/${guildId}/messages/search`,
+    { query: params }
+  )) as { messages: RawDiscordMessage[][]; total_results: number };
+
+  const hits = extractSearchHits(response.messages);
+
+  const { guildName } = await resolveGuildContext(client, guildId);
+
+  const channelIds = [...new Set(hits.map((m) => m.channel_id))];
+  const channelNames = await resolveChannelNames(client, channelIds);
+
+  return hits.map((raw) =>
+    buildMessageInfoFromRaw(raw, {
+      guildId,
+      guildName: guildName ?? guildId,
+      channelNames,
+    })
+  );
+}
+
+export async function recentMessagesImpl(
+  client: Client<true>,
+  guildId: string,
+  options: {
+    channelIds: string[];
+    limit: number;
+  }
+): Promise<MessageInfo[]> {
+  const pageSize = 25;
+  const allHits: RawDiscordMessage[] = [];
+
+  for (let offset = 0; offset < options.limit; offset += pageSize) {
+    const remaining = options.limit - offset;
+    const currentLimit = Math.min(pageSize, remaining);
+    const params = buildSearchParams({
+      authorIds: [],
+      channelIds: options.channelIds,
+      limit: currentLimit,
+      offset,
+      sortBy: "timestamp",
+      sortOrder: "desc",
+    });
+
+    const response = (await client.rest.get(
+      `/guilds/${guildId}/messages/search`,
+      { query: params }
+    )) as { messages: RawDiscordMessage[][]; total_results: number };
+
+    const hits = extractSearchHits(response.messages);
+    allHits.push(...hits);
+
+    if (hits.length < currentLimit) {
+      break;
+    }
+  }
+
+  const { guildName } = await resolveGuildContext(client, guildId);
+
+  const channelIds = [...new Set(allHits.map((m) => m.channel_id))];
+  const channelNames = await resolveChannelNames(client, channelIds);
+
+  return allHits.map((raw) =>
+    buildMessageInfoFromRaw(raw, {
+      guildId,
+      guildName: guildName ?? guildId,
+      channelNames,
+    })
+  );
+}
+
+// --- Production executors (use withDiscordClient for one-shot) ---
 
 function defaultListExecutor(
   token: string,
@@ -139,21 +331,7 @@ function defaultListExecutor(
   return withDiscordClient(
     token,
     [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-    async (client) => {
-      const channel = await fetchTextChannel(client, channelId);
-      const fetchOpts: Record<string, unknown> = { limit: options.limit };
-      if (options.before) {
-        fetchOpts.before = options.before;
-      }
-      if (options.after) {
-        fetchOpts.after = options.after;
-      }
-      if (options.around) {
-        fetchOpts.around = options.around;
-      }
-      const messages = await channel.messages.fetch(fetchOpts);
-      return [...messages.values()].map(buildMessageInfo);
-    }
+    (client) => listMessagesImpl(client, channelId, options)
   );
 }
 
@@ -165,14 +343,7 @@ function defaultSendExecutor(
   return withDiscordClient(
     token,
     [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-    async (client) => {
-      const channel = await fetchTextChannel(client, channelId);
-      if (!channel.isSendable()) {
-        throw new Error(`Channel ${channelId} is not sendable`);
-      }
-      const message = await channel.send({ content });
-      return buildMessageInfo(message);
-    }
+    (client) => sendMessageImpl(client, channelId, content)
   );
 }
 
@@ -185,11 +356,7 @@ function defaultEditExecutor(
   return withDiscordClient(
     token,
     [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-    async (client) => {
-      const channel = await fetchTextChannel(client, channelId);
-      const message = await channel.messages.edit(messageId, { content });
-      return buildMessageInfo(message);
-    }
+    (client) => editMessageImpl(client, channelId, messageId, content)
   );
 }
 
@@ -201,10 +368,7 @@ function defaultDeleteExecutor(
   return withDiscordClient(
     token,
     [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-    async (client) => {
-      const channel = await fetchTextChannel(client, channelId);
-      await channel.messages.delete(messageId);
-    }
+    (client) => deleteMessageImpl(client, channelId, messageId)
   );
 }
 
@@ -217,10 +381,7 @@ function defaultReactExecutor(
   return withDiscordClient(
     token,
     [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-    async (client) => {
-      const channel = await fetchTextChannel(client, channelId);
-      await channel.messages.react(messageId, emoji);
-    }
+    (client) => reactMessageImpl(client, channelId, messageId, emoji)
   );
 }
 
@@ -237,49 +398,8 @@ function defaultSearchExecutor(
     offset: number;
   }
 ): Promise<MessageInfo[]> {
-  return withDiscordClient(
-    token,
-    [GatewayIntentBits.Guilds],
-    async (client) => {
-      const params = buildSearchParams(options);
-
-      const response = (await client.rest.get(
-        `/guilds/${guildId}/messages/search`,
-        { query: params }
-      )) as { messages: RawDiscordMessage[][]; total_results: number };
-
-      const hits = extractSearchHits(response.messages);
-
-      let guildName: string | null = null;
-      try {
-        const guild = await client.guilds.fetch(guildId);
-        guildName = guild.name;
-      } catch {
-        guildName = guildId;
-      }
-
-      const channelIds = [...new Set(hits.map((m) => m.channel_id))];
-      const channelNames = new Map<string, string | null>();
-      for (const cid of channelIds) {
-        try {
-          const ch = await client.channels.fetch(cid);
-          channelNames.set(
-            cid,
-            ch && "name" in ch ? (ch.name as string) : null
-          );
-        } catch {
-          channelNames.set(cid, null);
-        }
-      }
-
-      return hits.map((raw) =>
-        buildMessageInfoFromRaw(raw, {
-          guildId,
-          guildName,
-          channelNames,
-        })
-      );
-    }
+  return withDiscordClient(token, [GatewayIntentBits.Guilds], (client) =>
+    searchMessagesImpl(client, guildId, options)
   );
 }
 
@@ -291,68 +411,8 @@ function defaultRecentExecutor(
     limit: number;
   }
 ): Promise<MessageInfo[]> {
-  return withDiscordClient(
-    token,
-    [GatewayIntentBits.Guilds],
-    async (client) => {
-      const pageSize = 25;
-      const allHits: RawDiscordMessage[] = [];
-
-      for (let offset = 0; offset < options.limit; offset += pageSize) {
-        const remaining = options.limit - offset;
-        const currentLimit = Math.min(pageSize, remaining);
-        const params = buildSearchParams({
-          authorIds: [],
-          channelIds: options.channelIds,
-          limit: currentLimit,
-          offset,
-          sortBy: "timestamp",
-          sortOrder: "desc",
-        });
-
-        const response = (await client.rest.get(
-          `/guilds/${guildId}/messages/search`,
-          { query: params }
-        )) as { messages: RawDiscordMessage[][]; total_results: number };
-
-        const hits = extractSearchHits(response.messages);
-        allHits.push(...hits);
-
-        if (hits.length < currentLimit) {
-          break;
-        }
-      }
-
-      let guildName: string | null = null;
-      try {
-        const guild = await client.guilds.fetch(guildId);
-        guildName = guild.name;
-      } catch {
-        guildName = guildId;
-      }
-
-      const channelIds = [...new Set(allHits.map((m) => m.channel_id))];
-      const channelNames = new Map<string, string | null>();
-      for (const cid of channelIds) {
-        try {
-          const ch = await client.channels.fetch(cid);
-          channelNames.set(
-            cid,
-            ch && "name" in ch ? (ch.name as string) : null
-          );
-        } catch {
-          channelNames.set(cid, null);
-        }
-      }
-
-      return allHits.map((raw) =>
-        buildMessageInfoFromRaw(raw, {
-          guildId,
-          guildName,
-          channelNames,
-        })
-      );
-    }
+  return withDiscordClient(token, [GatewayIntentBits.Guilds], (client) =>
+    recentMessagesImpl(client, guildId, options)
   );
 }
 
@@ -402,14 +462,13 @@ export async function listMessages(
   },
   executor: MessageListExecutor = defaultListExecutor
 ): Promise<void> {
-  if (!(args.limit >= 1 && args.limit <= 100)) {
-    throw new Error("Limit must be 1-100");
-  }
+  validateLimit(args.limit, 1, 100);
 
-  const exclusive = [args.before, args.after, args.around].filter(Boolean);
-  if (exclusive.length > 1) {
-    throw new Error("--before, --after, and --around are mutually exclusive");
-  }
+  validateMutuallyExclusive(
+    { before: args.before, after: args.after, around: args.around },
+    ["before", "after", "around"],
+    "--before, --after, and --around are mutually exclusive"
+  );
 
   const config = await loadConfig(args.config);
   const messages = await executor(config.token, args.channelId, {
@@ -509,15 +568,6 @@ export async function reactMessage(
   await executor(config.token, args.channelId, args.messageId, args.emoji);
 }
 
-const VALID_HAS_VALUES = new Set([
-  "link",
-  "embed",
-  "file",
-  "video",
-  "image",
-  "sound",
-]);
-
 export async function searchMessages(
   args: {
     config?: string;
@@ -532,38 +582,31 @@ export async function searchMessages(
   },
   executor: MessageSearchExecutor = defaultSearchExecutor
 ): Promise<void> {
-  if (!(args.limit >= 1 && args.limit <= 25)) {
-    throw new Error("Limit must be 1-25");
-  }
-
-  if (!(args.offset >= 0 && args.offset <= 9975)) {
-    throw new Error("Offset must be 0-9975");
-  }
+  validateLimit(args.limit, 1, 25);
+  validateOffset(args.offset);
 
   const trimmedContent = args.content?.trim() || undefined;
 
-  const hasFilter =
-    trimmedContent ||
-    args.authorIds.length > 0 ||
-    args.authorType ||
-    args.channelIds.length > 0 ||
-    args.has;
-  if (!hasFilter) {
-    throw new Error(
-      "Search requires at least one filter: use --content, --author-id, --author-type, --channel-id, or --has"
+  validateSearchFilters({
+    content: trimmedContent,
+    authorIds: args.authorIds,
+    authorType: args.authorType,
+    channelIds: args.channelIds,
+    has: args.has,
+  });
+
+  if (args.authorType) {
+    validateEnum(
+      args.authorType,
+      VALID_AUTHOR_TYPES,
+      'author-type must be "user" or "bot"'
     );
   }
 
-  if (
-    args.authorType &&
-    args.authorType !== "user" &&
-    args.authorType !== "bot"
-  ) {
-    throw new Error('author-type must be "user" or "bot"');
-  }
-
-  if (args.has && !VALID_HAS_VALUES.has(args.has)) {
-    throw new Error(
+  if (args.has) {
+    validateEnum(
+      args.has,
+      VALID_HAS_VALUES,
       "has must be one of: link, embed, file, video, image, sound"
     );
   }
@@ -594,9 +637,7 @@ export async function recentMessages(
   executor: MessageRecentExecutor = defaultRecentExecutor,
   guildResolver: GuildResolverFn = defaultGuildResolver
 ): Promise<void> {
-  if (!(args.limit >= 1 && args.limit <= 100)) {
-    throw new Error("Limit must be 1-100");
-  }
+  validateLimit(args.limit, 1, 100);
 
   const config = await loadConfig(args.config);
   const guildId = await guildResolver(
