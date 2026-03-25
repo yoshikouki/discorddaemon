@@ -19,3 +19,4 @@ export const CONFIG_PATH = join(CONFIG_DIR, "ddd.toml");
 export const DATA_DIR = resolveDataDir();
 export const PID_PATH = join(DATA_DIR, "ddd.pid");
 export const LOG_PATH = join(DATA_DIR, "ddd.log");
+export const SOCKET_PATH = join(DATA_DIR, "daemon.sock");
