@@ -51,17 +51,11 @@ export async function probeDaemon(cliToken?: string): Promise<ProbeResult> {
         return unavailable;
       }
     } catch {
-      // If daemon/info fails, proceed without token check (forward compat)
+      return unavailable;
     }
   }
 
   return { available: true, socketPath: SOCKET_PATH };
-}
-
-/** Backward-compatible wrapper */
-export async function isDaemonReachable(): Promise<boolean> {
-  const result = await probeDaemon();
-  return result.available;
 }
 
 function probeSocket(): Promise<boolean> {

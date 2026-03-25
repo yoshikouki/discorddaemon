@@ -2,6 +2,7 @@ import type { Client } from "discord.js";
 import { GatewayIntentBits } from "discord.js";
 import { loadConfig } from "../config";
 import { withDiscordClient } from "../discord";
+import { resolveGuildFromCache } from "../guild";
 import {
   hybridDeleteExecutor,
   hybridEditExecutor,
@@ -342,26 +343,9 @@ export function defaultGuildResolver(
   if (configGuild) {
     return Promise.resolve(configGuild);
   }
-  return withDiscordClient(token, [GatewayIntentBits.Guilds], (client) => {
-    const guilds = client.guilds.cache;
-    if (guilds.size === 0) {
-      throw new Error("Bot is not in any guild");
-    }
-    if (guilds.size === 1) {
-      const first = guilds.first();
-      if (!first) {
-        throw new Error("Bot is not in any guild");
-      }
-      return Promise.resolve(first.id);
-    }
-    const list = guilds
-      .map((g) => `  ${g.id} ${g.name}`)
-      .toJSON()
-      .join("\n");
-    throw new Error(
-      `Multiple guilds found. Specify guild_id or set default_guild in config:\n${list}`
-    );
-  });
+  return withDiscordClient(token, [GatewayIntentBits.Guilds], (client) =>
+    resolveGuildFromCache(client.guilds.cache)
+  );
 }
 
 // --- Subcommands ---

@@ -1,7 +1,12 @@
 import { existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Socket } from "bun";
-import { ChannelType, type Client } from "discord.js";
+import type { Client } from "discord.js";
+import {
+  type ChannelInfo,
+  TEXT_CHANNEL_TYPES,
+  toChannelInfo,
+} from "../commands/channels";
 import {
   deleteMessageImpl,
   editMessageImpl,
@@ -11,6 +16,7 @@ import {
   searchMessagesImpl,
   sendMessageImpl,
 } from "../commands/messages";
+import { resolveGuildFromCache } from "../guild";
 import { SOCKET_PATH } from "../paths";
 import {
   VALID_AUTHOR_TYPES,
@@ -353,30 +359,8 @@ export class IpcServer {
     validateLimit(params.limit ?? 50, 1, 100);
 
     const channelIds = params.channelIds ?? [];
-    let guildId = params.guildId;
-
-    // When guildId is not provided, resolve from cache
-    if (!guildId) {
-      const guilds = this.client.guilds.cache;
-      if (guilds.size === 0) {
-        throw new Error("Bot is not in any guild");
-      }
-      if (guilds.size === 1) {
-        const first = guilds.first();
-        if (!first) {
-          throw new Error("Bot is not in any guild");
-        }
-        guildId = first.id;
-      } else {
-        const list = guilds
-          .map((g) => `  ${g.id} ${g.name}`)
-          .toJSON()
-          .join("\n");
-        throw new Error(
-          `Multiple guilds found. Specify guild_id or set default_guild in config:\n${list}`
-        );
-      }
-    }
+    const guildId =
+      params.guildId ?? resolveGuildFromCache(this.client.guilds.cache);
 
     return recentMessagesImpl(this.client, guildId, {
       channelIds,
@@ -394,47 +378,11 @@ export class IpcServer {
       throw new Error(`Cannot resolve guild for channel ${params.channelId}`);
     }
 
-    // Otherwise, resolve from cache
-    const guilds = this.client.guilds.cache;
-    if (guilds.size === 0) {
-      throw new Error("Bot is not in any guild");
-    }
-    if (guilds.size === 1) {
-      const first = guilds.first();
-      if (!first) {
-        throw new Error("Bot is not in any guild");
-      }
-      return { guildId: first.id };
-    }
-
-    const list = guilds
-      .map((g) => `  ${g.id} ${g.name}`)
-      .toJSON()
-      .join("\n");
-    throw new Error(`Multiple guilds found. Specify guild_id:\n${list}`);
+    return { guildId: resolveGuildFromCache(this.client.guilds.cache) };
   }
 
   private handleChannelsList(_params: ChannelsListParams) {
-    const TEXT_CHANNEL_TYPES = new Set([
-      ChannelType.GuildText,
-      ChannelType.GuildAnnouncement,
-      ChannelType.AnnouncementThread,
-      ChannelType.PublicThread,
-      ChannelType.PrivateThread,
-      ChannelType.GuildForum,
-      ChannelType.GuildMedia,
-    ]);
-
-    const channels: Array<{
-      channel_id: string;
-      channel_name: string;
-      guild_id: string;
-      guild_name: string;
-      parent_id: string | null;
-      parent_name: string | null;
-      position: number | null;
-      type: string;
-    }> = [];
+    const channels: ChannelInfo[] = [];
 
     for (const guild of this.client.guilds.cache.values()) {
       for (const channel of guild.channels.cache.values()) {
@@ -442,16 +390,7 @@ export class IpcServer {
           continue;
         }
         const pos = "position" in channel ? (channel.position as number) : null;
-        channels.push({
-          guild_id: guild.id,
-          guild_name: guild.name,
-          channel_id: channel.id,
-          channel_name: channel.name,
-          type: ChannelType[channel.type],
-          parent_id: channel.parentId ?? null,
-          parent_name: channel.parent?.name ?? null,
-          position: pos,
-        });
+        channels.push(toChannelInfo(guild, channel, pos));
       }
     }
 

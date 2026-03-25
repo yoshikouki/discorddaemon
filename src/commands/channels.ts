@@ -13,7 +13,7 @@ export interface ChannelInfo {
   type: string;
 }
 
-const TEXT_CHANNEL_TYPES = new Set([
+export const TEXT_CHANNEL_TYPES = new Set([
   ChannelType.GuildText,
   ChannelType.GuildAnnouncement,
   ChannelType.AnnouncementThread,
@@ -25,7 +25,7 @@ const TEXT_CHANNEL_TYPES = new Set([
 
 export type ChannelFetcher = (token: string) => Promise<ChannelInfo[]>;
 
-function toChannelInfo(
+export function toChannelInfo(
   guild: { id: string; name: string },
   channel: {
     id: string;

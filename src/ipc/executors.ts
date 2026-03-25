@@ -165,6 +165,7 @@ import {
   sendMessageImpl,
 } from "../commands/messages";
 import { withDiscordClient } from "../discord";
+import { resolveGuildFromCache } from "../guild";
 
 const oneshotListExecutor: MessageListExecutor = (token, channelId, options) =>
   withDiscordClient(
@@ -230,28 +231,8 @@ const oneshotRecentExecutor: MessageRecentExecutor = (
   options
 ) =>
   withDiscordClient(token, [GatewayIntentBits.Guilds], (client) => {
-    let resolvedGuildId = guildId;
-    if (!resolvedGuildId) {
-      const guilds = client.guilds.cache;
-      if (guilds.size === 0) {
-        throw new Error("Bot is not in any guild");
-      }
-      if (guilds.size === 1) {
-        const first = guilds.first();
-        if (!first) {
-          throw new Error("Bot is not in any guild");
-        }
-        resolvedGuildId = first.id;
-      } else {
-        const list = guilds
-          .map((g) => `  ${g.id} ${g.name}`)
-          .toJSON()
-          .join("\n");
-        throw new Error(
-          `Multiple guilds found. Specify guild_id or set default_guild in config:\n${list}`
-        );
-      }
-    }
+    const resolvedGuildId =
+      guildId ?? resolveGuildFromCache(client.guilds.cache);
     return recentMessagesImpl(client, resolvedGuildId, options);
   });
 
@@ -303,31 +284,7 @@ export const hybridChannelsFetcher = createHybridExecutor<
 >(ipcChannelsFetcher, fetchDiscordChannels);
 
 // Guild resolver: read-only
-export const hybridGuildResolver: GuildResolverFn = async (
-  token,
-  configGuild?,
-  cliGuild?
-) => {
-  // Short-circuit if guild is already known
-  if (cliGuild) {
-    return cliGuild;
-  }
-  if (configGuild) {
-    return configGuild;
-  }
-
-  const probe = await probeDaemon(token);
-  if (!probe.available) {
-    return oneshotGuildResolver(token, configGuild, cliGuild);
-  }
-
-  try {
-    return await ipcGuildResolver(token, configGuild, cliGuild);
-  } catch (err) {
-    if (err instanceof ConnectionRefusedError) {
-      return oneshotGuildResolver(token, configGuild, cliGuild);
-    }
-    // Read-only — safe to fallback
-    return oneshotGuildResolver(token, configGuild, cliGuild);
-  }
-};
+export const hybridGuildResolver: GuildResolverFn = createHybridExecutor<
+  [string, string | undefined, string | undefined],
+  string
+>(ipcGuildResolver, oneshotGuildResolver);
