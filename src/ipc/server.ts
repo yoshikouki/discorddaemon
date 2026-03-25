@@ -1,13 +1,43 @@
 import { existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Socket } from "bun";
-import type { Client } from "discord.js";
+import { ChannelType, type Client } from "discord.js";
+import {
+  deleteMessageImpl,
+  editMessageImpl,
+  listMessagesImpl,
+  reactMessageImpl,
+  recentMessagesImpl,
+  searchMessagesImpl,
+  sendMessageImpl,
+} from "../commands/messages";
 import { SOCKET_PATH } from "../paths";
-import type { IpcRequest, IpcResponse } from "./protocol";
+import {
+  VALID_AUTHOR_TYPES,
+  VALID_HAS_VALUES,
+  validateEnum,
+  validateLimit,
+  validateMutuallyExclusive,
+  validateOffset,
+  validateRequired,
+  validateSearchFilters,
+} from "../validators";
+import type {
+  ChannelsListParams,
+  GuildResolveParams,
+  IpcRequest,
+  IpcResponse,
+  MessagesDeleteParams,
+  MessagesEditParams,
+  MessagesListParams,
+  MessagesReactParams,
+  MessagesRecentParams,
+  MessagesSearchParams,
+  MessagesSendParams,
+} from "./protocol";
 
 export class IpcServer {
   private server: ReturnType<typeof Bun.listen> | null = null;
-  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: used by future message handlers
   private readonly client: Client<true>;
   private readonly startTime: number;
   private readonly tokenFingerprint: string;
@@ -174,8 +204,265 @@ export class IpcServer {
           tokenFingerprint: this.tokenFingerprint,
         };
 
+      case "messages/list":
+        return this.handleMessagesList(request.params as MessagesListParams);
+
+      case "messages/send":
+        return this.handleMessagesSend(request.params as MessagesSendParams);
+
+      case "messages/edit":
+        return this.handleMessagesEdit(request.params as MessagesEditParams);
+
+      case "messages/delete":
+        return this.handleMessagesDelete(
+          request.params as MessagesDeleteParams
+        );
+
+      case "messages/react":
+        return this.handleMessagesReact(request.params as MessagesReactParams);
+
+      case "messages/search":
+        return this.handleMessagesSearch(
+          request.params as MessagesSearchParams
+        );
+
+      case "messages/recent":
+        return this.handleMessagesRecent(
+          request.params as MessagesRecentParams
+        );
+
+      case "guild/resolve":
+        return this.handleGuildResolve(request.params as GuildResolveParams);
+
+      case "channels/list":
+        return this.handleChannelsList(request.params as ChannelsListParams);
+
       default:
         throw new Error(`Unknown method: ${request.method}`);
     }
+  }
+
+  private handleMessagesList(params: MessagesListParams) {
+    validateRequired(params.channelId, "channelId is required");
+    validateLimit(params.limit ?? 50, 1, 100);
+    validateMutuallyExclusive(
+      { before: params.before, after: params.after, around: params.around },
+      ["before", "after", "around"],
+      "--before, --after, and --around are mutually exclusive"
+    );
+
+    return listMessagesImpl(this.client, params.channelId, {
+      limit: params.limit ?? 50,
+      before: params.before,
+      after: params.after,
+      around: params.around,
+    });
+  }
+
+  private handleMessagesSend(params: MessagesSendParams) {
+    validateRequired(params.channelId, "channelId is required");
+    validateRequired(params.content, "content is required");
+    if (!params.content.trim()) {
+      throw new Error("Content must not be empty");
+    }
+
+    return sendMessageImpl(this.client, params.channelId, params.content);
+  }
+
+  private handleMessagesEdit(params: MessagesEditParams) {
+    validateRequired(params.channelId, "channelId is required");
+    validateRequired(params.messageId, "messageId is required");
+    validateRequired(params.content, "content is required");
+    if (!params.content.trim()) {
+      throw new Error("Content must not be empty");
+    }
+
+    return editMessageImpl(
+      this.client,
+      params.channelId,
+      params.messageId,
+      params.content
+    );
+  }
+
+  private handleMessagesDelete(params: MessagesDeleteParams) {
+    validateRequired(params.channelId, "channelId is required");
+    validateRequired(params.messageId, "messageId is required");
+
+    return deleteMessageImpl(this.client, params.channelId, params.messageId);
+  }
+
+  private handleMessagesReact(params: MessagesReactParams) {
+    validateRequired(params.channelId, "channelId is required");
+    validateRequired(params.messageId, "messageId is required");
+    validateRequired(params.emoji, "emoji is required");
+
+    return reactMessageImpl(
+      this.client,
+      params.channelId,
+      params.messageId,
+      params.emoji
+    );
+  }
+
+  private handleMessagesSearch(params: MessagesSearchParams) {
+    validateRequired(params.guildId, "guildId is required");
+    validateLimit(params.limit ?? 25, 1, 25);
+    validateOffset(params.offset ?? 0);
+
+    const trimmedContent = params.content?.trim() || undefined;
+    const authorIds = params.authorIds ?? [];
+    const channelIds = params.channelIds ?? [];
+
+    validateSearchFilters({
+      content: trimmedContent,
+      authorIds,
+      authorType: params.authorType,
+      channelIds,
+      has: params.has,
+    });
+
+    if (params.authorType) {
+      validateEnum(
+        params.authorType,
+        VALID_AUTHOR_TYPES,
+        'author-type must be "user" or "bot"'
+      );
+    }
+
+    if (params.has) {
+      validateEnum(
+        params.has,
+        VALID_HAS_VALUES,
+        "has must be one of: link, embed, file, video, image, sound"
+      );
+    }
+
+    return searchMessagesImpl(this.client, params.guildId, {
+      content: trimmedContent,
+      authorIds,
+      authorType: params.authorType,
+      channelIds,
+      has: params.has,
+      limit: params.limit ?? 25,
+      offset: params.offset ?? 0,
+    });
+  }
+
+  private handleMessagesRecent(params: MessagesRecentParams) {
+    validateLimit(params.limit ?? 50, 1, 100);
+
+    const channelIds = params.channelIds ?? [];
+    let guildId = params.guildId;
+
+    // When guildId is not provided, resolve from cache
+    if (!guildId) {
+      const guilds = this.client.guilds.cache;
+      if (guilds.size === 0) {
+        throw new Error("Bot is not in any guild");
+      }
+      if (guilds.size === 1) {
+        const first = guilds.first();
+        if (!first) {
+          throw new Error("Bot is not in any guild");
+        }
+        guildId = first.id;
+      } else {
+        const list = guilds
+          .map((g) => `  ${g.id} ${g.name}`)
+          .toJSON()
+          .join("\n");
+        throw new Error(
+          `Multiple guilds found. Specify guild_id or set default_guild in config:\n${list}`
+        );
+      }
+    }
+
+    return recentMessagesImpl(this.client, guildId, {
+      channelIds,
+      limit: params.limit ?? 50,
+    });
+  }
+
+  private handleGuildResolve(params: GuildResolveParams) {
+    // If channelId is provided, resolve via channel's guild
+    if (params.channelId) {
+      const channel = this.client.channels.cache.get(params.channelId);
+      if (channel && "guildId" in channel && channel.guildId) {
+        return { guildId: channel.guildId };
+      }
+      throw new Error(`Cannot resolve guild for channel ${params.channelId}`);
+    }
+
+    // Otherwise, resolve from cache
+    const guilds = this.client.guilds.cache;
+    if (guilds.size === 0) {
+      throw new Error("Bot is not in any guild");
+    }
+    if (guilds.size === 1) {
+      const first = guilds.first();
+      if (!first) {
+        throw new Error("Bot is not in any guild");
+      }
+      return { guildId: first.id };
+    }
+
+    const list = guilds
+      .map((g) => `  ${g.id} ${g.name}`)
+      .toJSON()
+      .join("\n");
+    throw new Error(`Multiple guilds found. Specify guild_id:\n${list}`);
+  }
+
+  private handleChannelsList(_params: ChannelsListParams) {
+    const TEXT_CHANNEL_TYPES = new Set([
+      ChannelType.GuildText,
+      ChannelType.GuildAnnouncement,
+      ChannelType.AnnouncementThread,
+      ChannelType.PublicThread,
+      ChannelType.PrivateThread,
+      ChannelType.GuildForum,
+      ChannelType.GuildMedia,
+    ]);
+
+    const channels: Array<{
+      channel_id: string;
+      channel_name: string;
+      guild_id: string;
+      guild_name: string;
+      parent_id: string | null;
+      parent_name: string | null;
+      position: number | null;
+      type: string;
+    }> = [];
+
+    for (const guild of this.client.guilds.cache.values()) {
+      for (const channel of guild.channels.cache.values()) {
+        if (!TEXT_CHANNEL_TYPES.has(channel.type)) {
+          continue;
+        }
+        const pos = "position" in channel ? (channel.position as number) : null;
+        channels.push({
+          guild_id: guild.id,
+          guild_name: guild.name,
+          channel_id: channel.id,
+          channel_name: channel.name,
+          type: ChannelType[channel.type],
+          parent_id: channel.parentId ?? null,
+          parent_name: channel.parent?.name ?? null,
+          position: pos,
+        });
+      }
+    }
+
+    channels.sort(
+      (a, b) =>
+        a.guild_name.localeCompare(b.guild_name) ||
+        (a.position ?? Number.MAX_SAFE_INTEGER) -
+          (b.position ?? Number.MAX_SAFE_INTEGER) ||
+        a.channel_name.localeCompare(b.channel_name)
+    );
+
+    return channels;
   }
 }
