@@ -3,6 +3,16 @@ import { GatewayIntentBits } from "discord.js";
 import { loadConfig } from "../config";
 import { withDiscordClient } from "../discord";
 import {
+  hybridDeleteExecutor,
+  hybridEditExecutor,
+  hybridGuildResolver,
+  hybridListExecutor,
+  hybridReactExecutor,
+  hybridRecentExecutor,
+  hybridSearchExecutor,
+  hybridSendExecutor,
+} from "../ipc/executors";
+import {
   buildMessageInfo,
   buildMessageInfoFromRaw,
   type MessageInfo,
@@ -321,101 +331,6 @@ export async function recentMessagesImpl(
   );
 }
 
-// --- Production executors (use withDiscordClient for one-shot) ---
-
-function defaultListExecutor(
-  token: string,
-  channelId: string,
-  options: { limit: number; before?: string; after?: string; around?: string }
-): Promise<MessageInfo[]> {
-  return withDiscordClient(
-    token,
-    [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-    (client) => listMessagesImpl(client, channelId, options)
-  );
-}
-
-function defaultSendExecutor(
-  token: string,
-  channelId: string,
-  content: string
-): Promise<MessageInfo> {
-  return withDiscordClient(
-    token,
-    [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-    (client) => sendMessageImpl(client, channelId, content)
-  );
-}
-
-function defaultEditExecutor(
-  token: string,
-  channelId: string,
-  messageId: string,
-  content: string
-): Promise<MessageInfo> {
-  return withDiscordClient(
-    token,
-    [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-    (client) => editMessageImpl(client, channelId, messageId, content)
-  );
-}
-
-function defaultDeleteExecutor(
-  token: string,
-  channelId: string,
-  messageId: string
-): Promise<void> {
-  return withDiscordClient(
-    token,
-    [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-    (client) => deleteMessageImpl(client, channelId, messageId)
-  );
-}
-
-function defaultReactExecutor(
-  token: string,
-  channelId: string,
-  messageId: string,
-  emoji: string
-): Promise<void> {
-  return withDiscordClient(
-    token,
-    [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-    (client) => reactMessageImpl(client, channelId, messageId, emoji)
-  );
-}
-
-function defaultSearchExecutor(
-  token: string,
-  guildId: string,
-  options: {
-    content?: string;
-    authorIds: string[];
-    authorType?: string;
-    channelIds: string[];
-    has?: string;
-    limit: number;
-    offset: number;
-  }
-): Promise<MessageInfo[]> {
-  return withDiscordClient(token, [GatewayIntentBits.Guilds], (client) =>
-    searchMessagesImpl(client, guildId, options)
-  );
-}
-
-function defaultRecentExecutor(
-  token: string,
-  guildId: string,
-  options: {
-    channelIds: string[];
-    limit: number;
-  }
-): Promise<MessageInfo[]> {
-  return withDiscordClient(token, [GatewayIntentBits.Guilds], (client) =>
-    recentMessagesImpl(client, guildId, options)
-  );
-}
-
 export function defaultGuildResolver(
   token: string,
   configGuild?: string,
@@ -460,7 +375,7 @@ export async function listMessages(
     after?: string;
     around?: string;
   },
-  executor: MessageListExecutor = defaultListExecutor
+  executor: MessageListExecutor = hybridListExecutor
 ): Promise<void> {
   validateLimit(args.limit, 1, 100);
 
@@ -489,7 +404,7 @@ export async function sendMessage(
     channelId: string;
     content?: string;
   },
-  executor: MessageSendExecutor = defaultSendExecutor,
+  executor: MessageSendExecutor = hybridSendExecutor,
   stdinReader: () => Promise<string | undefined> = readStdin
 ): Promise<void> {
   let content = args.content;
@@ -517,7 +432,7 @@ export async function editMessage(
     messageId: string;
     content?: string;
   },
-  executor: MessageEditExecutor = defaultEditExecutor,
+  executor: MessageEditExecutor = hybridEditExecutor,
   stdinReader: () => Promise<string | undefined> = readStdin
 ): Promise<void> {
   let content = args.content;
@@ -549,7 +464,7 @@ export async function deleteMessage(
     channelId: string;
     messageId: string;
   },
-  executor: MessageDeleteExecutor = defaultDeleteExecutor
+  executor: MessageDeleteExecutor = hybridDeleteExecutor
 ): Promise<void> {
   const config = await loadConfig(args.config);
   await executor(config.token, args.channelId, args.messageId);
@@ -562,7 +477,7 @@ export async function reactMessage(
     messageId: string;
     emoji: string;
   },
-  executor: MessageReactExecutor = defaultReactExecutor
+  executor: MessageReactExecutor = hybridReactExecutor
 ): Promise<void> {
   const config = await loadConfig(args.config);
   await executor(config.token, args.channelId, args.messageId, args.emoji);
@@ -580,7 +495,7 @@ export async function searchMessages(
     limit: number;
     offset: number;
   },
-  executor: MessageSearchExecutor = defaultSearchExecutor
+  executor: MessageSearchExecutor = hybridSearchExecutor
 ): Promise<void> {
   validateLimit(args.limit, 1, 25);
   validateOffset(args.offset);
@@ -634,8 +549,8 @@ export async function recentMessages(
     channelIds: string[];
     limit: number;
   },
-  executor: MessageRecentExecutor = defaultRecentExecutor,
-  guildResolver: GuildResolverFn = defaultGuildResolver
+  executor: MessageRecentExecutor = hybridRecentExecutor,
+  guildResolver: GuildResolverFn = hybridGuildResolver
 ): Promise<void> {
   validateLimit(args.limit, 1, 100);
 
