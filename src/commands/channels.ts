@@ -1,5 +1,6 @@
 import { ChannelType, Client, Events, GatewayIntentBits } from "discord.js";
 import { resolveToken } from "../config";
+import { hybridChannelsFetcher } from "../ipc/executors";
 
 export interface ChannelInfo {
   channel_id: string;
@@ -100,7 +101,7 @@ export async function fetchDiscordChannels(
 
 export async function channelsCommand(
   args: { config?: string; token?: string },
-  fetcher: ChannelFetcher = fetchDiscordChannels
+  fetcher: ChannelFetcher = hybridChannelsFetcher
 ): Promise<void> {
   const token = await resolveToken({ token: args.token, config: args.config });
   const channels = await fetcher(token);
