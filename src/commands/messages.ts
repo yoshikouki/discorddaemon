@@ -79,7 +79,7 @@ export type MessageSearchExecutor = (
 
 export type MessageRecentExecutor = (
   token: string,
-  guildId: string,
+  guildId: string | undefined,
   options: {
     channelIds: string[];
     limit: number;

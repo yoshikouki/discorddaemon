@@ -229,9 +229,31 @@ const oneshotRecentExecutor: MessageRecentExecutor = (
   guildId,
   options
 ) =>
-  withDiscordClient(token, [GatewayIntentBits.Guilds], (client) =>
-    recentMessagesImpl(client, guildId, options)
-  );
+  withDiscordClient(token, [GatewayIntentBits.Guilds], (client) => {
+    let resolvedGuildId = guildId;
+    if (!resolvedGuildId) {
+      const guilds = client.guilds.cache;
+      if (guilds.size === 0) {
+        throw new Error("Bot is not in any guild");
+      }
+      if (guilds.size === 1) {
+        const first = guilds.first();
+        if (!first) {
+          throw new Error("Bot is not in any guild");
+        }
+        resolvedGuildId = first.id;
+      } else {
+        const list = guilds
+          .map((g) => `  ${g.id} ${g.name}`)
+          .toJSON()
+          .join("\n");
+        throw new Error(
+          `Multiple guilds found. Specify guild_id or set default_guild in config:\n${list}`
+        );
+      }
+    }
+    return recentMessagesImpl(client, resolvedGuildId, options);
+  });
 
 // Read-only commands: safeToRetry = true (default)
 export const hybridListExecutor = createHybridExecutor(
