@@ -31,9 +31,25 @@ export interface DaemonPingResult {
 
 export type DaemonInfoParams = Record<string, never>;
 export interface DaemonInfoResult {
+  channelsWatched?: number;
+  hookErrors?: number;
+  hooksExecuted?: number;
+  lastEventTime?: string | null;
+  messagesReceived?: number;
   pid: number;
+  repliesSent?: number;
   tokenFingerprint: string; // first 8 chars of SHA-256(token)
   uptime: number;
+}
+
+export type DaemonStatsParams = Record<string, never>;
+export interface DaemonStatsResult {
+  channelsWatched: number;
+  hookErrors: number;
+  hooksExecuted: number;
+  lastEventTime: string | null;
+  messagesReceived: number;
+  repliesSent: number;
 }
 
 export interface GuildResolveParams {

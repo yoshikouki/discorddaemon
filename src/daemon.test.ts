@@ -1,7 +1,10 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { Message } from "discord.js";
+import type { AuditEntry, AuditEvent } from "./audit";
 import { buildHookInput, Daemon } from "./daemon";
 import type { IpcServer } from "./ipc/server";
+import type { LogEntry } from "./logger";
+import { StatsTracker } from "./stats";
 import type { ChannelConfig, Config, HookResult } from "./types";
 
 function fakeMessage(
@@ -58,6 +61,39 @@ function timeoutResult(): HookResult {
   return { success: false, output: "", error: "", exitCode: 1, timedOut: true };
 }
 
+function mockLogger(): {
+  entries: LogEntry[];
+  writer: (entry: LogEntry) => void;
+} {
+  const entries: LogEntry[] = [];
+  return { entries, writer: (entry: LogEntry) => entries.push(entry) };
+}
+
+function mockAudit(): {
+  events: AuditEntry[];
+  writer: ReturnType<typeof import("./audit").createAuditWriter>;
+} {
+  const events: AuditEntry[] = [];
+  return {
+    events,
+    writer: {
+      write(event: AuditEvent, fields?: Record<string, unknown>) {
+        events.push({
+          ts: new Date().toISOString(),
+          event,
+          ...fields,
+        });
+      },
+    },
+  };
+}
+
+function createTestLogger() {
+  const { entries, writer } = mockLogger();
+  const { createLogger } = require("./logger");
+  return { entries, logger: createLogger({ writer }) };
+}
+
 describe("buildHookInput", () => {
   test("maps message fields to HookInput", () => {
     const input = buildHookInput(fakeMessage());
@@ -105,6 +141,19 @@ describe("Daemon.handleMessage", () => {
     const msg = fakeMessage({ channelId: "unknown-channel" });
     (daemon as any).handleMessage(msg);
     expect(executor).not.toHaveBeenCalled();
+  });
+
+  test("records stats and audit on message received", () => {
+    const executor = mock(() => Promise.resolve(successResult()));
+    const config = makeConfig(makeChannelMap(defaultChannel));
+    const stats = new StatsTracker(1);
+    const { events, writer: audit } = mockAudit();
+    const daemon = new Daemon(config, executor, { stats, audit });
+
+    (daemon as any).handleMessage(fakeMessage());
+
+    expect(stats.getStats().messagesReceived).toBe(1);
+    expect(events.some((e) => e.event === "message_received")).toBe(true);
   });
 });
 
@@ -157,16 +206,101 @@ describe("Daemon.runHook", () => {
   test("catches message.reply errors and logs them", async () => {
     const executor = mock(() => Promise.resolve(successResult("reply")));
     const config = makeConfig(makeChannelMap(defaultChannel));
-    const daemon = new Daemon(config, executor);
+    const { entries, logger } = createTestLogger();
+    const daemon = new Daemon(config, executor, { logger });
 
     const msg = fakeMessage({
       reply: mock(() => Promise.reject(new Error("Missing Permissions"))),
     });
 
-    // Should not throw
     await (daemon as any).runHook(msg, "./hooks/test.sh");
 
     expect(msg.reply).toHaveBeenCalled();
+    expect(entries.some((e) => e.msg === "Failed to send reply")).toBe(true);
+  });
+
+  test("records audit events for hook execution", async () => {
+    const executor = mock(() => Promise.resolve(successResult("reply")));
+    const config = makeConfig(makeChannelMap(defaultChannel));
+    const { events, writer: audit } = mockAudit();
+    const stats = new StatsTracker(1);
+    const daemon = new Daemon(config, executor, { audit, stats });
+
+    await (daemon as any).runHook(fakeMessage(), "./hooks/test.sh");
+
+    const hookEvent = events.find((e) => e.event === "hook_executed");
+    expect(hookEvent).toBeDefined();
+    expect(hookEvent?.success).toBe(true);
+    expect(typeof hookEvent?.durationMs).toBe("number");
+
+    const replyEvent = events.find((e) => e.event === "reply_sent");
+    expect(replyEvent).toBeDefined();
+
+    expect(stats.getStats().hooksExecuted).toBe(1);
+    expect(stats.getStats().repliesSent).toBe(1);
+  });
+
+  test("records audit for hook timeout", async () => {
+    const executor = mock(() => Promise.resolve(timeoutResult()));
+    const config = makeConfig(makeChannelMap(defaultChannel));
+    const { events, writer: audit } = mockAudit();
+    const stats = new StatsTracker(1);
+    const daemon = new Daemon(config, executor, { audit, stats });
+
+    await (daemon as any).runHook(fakeMessage(), "./hooks/test.sh");
+
+    const hookEvent = events.find((e) => e.event === "hook_executed");
+    expect(hookEvent?.success).toBe(false);
+    expect(hookEvent?.timedOut).toBe(true);
+    expect(stats.getStats().hookErrors).toBe(1);
+  });
+
+  test("records audit for hook failure", async () => {
+    const executor = mock(() => Promise.resolve(failResult()));
+    const config = makeConfig(makeChannelMap(defaultChannel));
+    const { events, writer: audit } = mockAudit();
+    const stats = new StatsTracker(1);
+    const daemon = new Daemon(config, executor, { audit, stats });
+
+    await (daemon as any).runHook(fakeMessage(), "./hooks/test.sh");
+
+    const hookEvent = events.find((e) => e.event === "hook_executed");
+    expect(hookEvent?.success).toBe(false);
+    expect(hookEvent?.exitCode).toBe(1);
+    expect(stats.getStats().hookErrors).toBe(1);
+  });
+
+  test("records reply_failed audit on reply error", async () => {
+    const executor = mock(() => Promise.resolve(successResult("reply")));
+    const config = makeConfig(makeChannelMap(defaultChannel));
+    const { events, writer: audit } = mockAudit();
+    const daemon = new Daemon(config, executor, { audit });
+
+    const msg = fakeMessage({
+      reply: mock(() => Promise.reject(new Error("Missing Permissions"))),
+    });
+
+    await (daemon as any).runHook(msg, "./hooks/test.sh");
+
+    const failEvent = events.find((e) => e.event === "reply_failed");
+    expect(failEvent).toBeDefined();
+    expect(failEvent?.error).toBe("Missing Permissions");
+  });
+});
+
+describe("Daemon.getStats", () => {
+  test("returns null when no stats tracker", () => {
+    const daemon = new Daemon(makeConfig());
+    expect(daemon.getStats()).toBeNull();
+  });
+
+  test("returns stats when tracker is provided", () => {
+    const stats = new StatsTracker(2);
+    const daemon = new Daemon(makeConfig(), undefined, { stats });
+    const result = daemon.getStats();
+
+    expect(result).not.toBeNull();
+    expect(result?.channelsWatched).toBe(2);
   });
 });
 
@@ -189,10 +323,17 @@ describe("Daemon IPC integration", () => {
     const config = makeConfig();
     const daemon = new Daemon(config);
 
-    // ipcServer is null by default
     expect((daemon as any).ipcServer).toBeNull();
-
-    // Should not throw
     daemon.stop();
+  });
+
+  test("stop() writes audit event", () => {
+    const config = makeConfig();
+    const { events, writer: audit } = mockAudit();
+    const daemon = new Daemon(config, undefined, { audit });
+
+    daemon.stop();
+
+    expect(events.some((e) => e.event === "daemon_stopped")).toBe(true);
   });
 });

@@ -18,6 +18,7 @@ import {
 } from "../commands/messages";
 import { resolveGuildFromCache } from "../guild";
 import { SOCKET_PATH } from "../paths";
+import type { DaemonStats } from "../stats";
 import {
   VALID_AUTHOR_TYPES,
   VALID_HAS_VALUES,
@@ -42,6 +43,10 @@ import type {
   MessagesSendParams,
 } from "./protocol";
 
+export interface IpcServerOptions {
+  statsProvider?: () => DaemonStats | null;
+}
+
 export class IpcServer {
   private server: ReturnType<typeof Bun.listen> | null = null;
   private readonly client: Client<true>;
@@ -49,11 +54,18 @@ export class IpcServer {
   private readonly tokenFingerprint: string;
   private readonly socketPath: string;
   private readonly buffers = new Map<Socket<undefined>, string>();
+  private readonly statsProvider: (() => DaemonStats | null) | null;
 
-  constructor(client: Client<true>, token: string, socketPath?: string) {
+  constructor(
+    client: Client<true>,
+    token: string,
+    socketPath?: string,
+    options?: IpcServerOptions
+  ) {
     this.client = client;
     this.startTime = Date.now();
     this.socketPath = socketPath ?? SOCKET_PATH;
+    this.statsProvider = options?.statsProvider ?? null;
     // First 8 chars of SHA-256 hash — used by probe for token verification
     const hash = new Bun.CryptoHasher("sha256").update(token).digest("hex");
     this.tokenFingerprint = hash.slice(0, 8);
@@ -203,12 +215,18 @@ export class IpcServer {
           pid: process.pid,
         };
 
-      case "daemon/info":
+      case "daemon/info": {
+        const stats = this.statsProvider?.() ?? undefined;
         return {
           uptime: Math.floor((Date.now() - this.startTime) / 1000),
           pid: process.pid,
           tokenFingerprint: this.tokenFingerprint,
+          ...stats,
         };
+      }
+
+      case "daemon/stats":
+        return this.statsProvider?.() ?? {};
 
       case "messages/list":
         return this.handleMessagesList(request.params as MessagesListParams);
