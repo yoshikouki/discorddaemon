@@ -20,3 +20,4 @@ export const DATA_DIR = resolveDataDir();
 export const PID_PATH = join(DATA_DIR, "ddd.pid");
 export const LOG_PATH = join(DATA_DIR, "ddd.log");
 export const SOCKET_PATH = join(DATA_DIR, "daemon.sock");
+export const AUDIT_PATH = join(DATA_DIR, "audit.jsonl");
