@@ -1,8 +1,11 @@
 import { mkdirSync, openSync } from "node:fs";
+import { createAuditWriter } from "../audit";
 import { loadConfig } from "../config";
 import { Daemon } from "../daemon";
+import { createLogger } from "../logger";
 import { DATA_DIR, LOG_PATH } from "../paths";
 import { isProcessRunning, readPid, removePid, writePid } from "../pid";
+import { StatsTracker } from "../stats";
 
 function log(msg: string): void {
   console.error(`[ddd] ${msg}`);
@@ -25,7 +28,12 @@ async function startForeground(args: { config?: string }): Promise<void> {
   });
 
   const config = await loadConfig(args.config);
-  const daemon = new Daemon(config);
+  const logger = createLogger({
+    mode: process.stderr.isTTY ? "human" : "json",
+  });
+  const audit = createAuditWriter();
+  const stats = new StatsTracker(config.channels.size);
+  const daemon = new Daemon(config, undefined, { logger, audit, stats });
 
   mkdirSync(DATA_DIR, { recursive: true });
   await writePid(process.pid);
