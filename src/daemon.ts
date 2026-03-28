@@ -1,6 +1,7 @@
 import type { Message } from "discord.js";
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { type AuditWriter, nullAuditWriter } from "./audit";
+import { loadConfig } from "./config";
 import { executeHook } from "./hook";
 import { IpcServer } from "./ipc/server";
 import { type Logger, nullLogger } from "./logger";
@@ -116,34 +117,47 @@ export class Daemon {
       return;
     }
 
-    const channelConfig = this.config.channels.get(message.channelId);
-    if (!channelConfig) {
-      return;
-    }
-
-    this.stats?.recordMessageReceived();
-    this.audit.write("message_received", {
-      channel: channelConfig.name,
-      channelId: message.channelId,
-      user: message.author.username,
-      userId: message.author.id,
-    });
-
-    this.runHook(message, channelConfig.on_message).catch((err: unknown) => {
+    this.resolveAndRunHook(message).catch((err: unknown) => {
       const errMsg = err instanceof Error ? err.message : String(err);
-      this.hookLogger.error("Error in channel", {
-        channel: channelConfig.name,
+      this.hookLogger.error("Error handling message", {
+        channelId: message.channelId,
         error: errMsg,
       });
     });
   }
 
-  private async runHook(message: Message, scriptPath: string): Promise<void> {
+  private async resolveAndRunHook(message: Message): Promise<void> {
+    const config = await loadConfig(this.config.configPath);
+    const channelConfig = config.channels.get(message.channelId);
+    const scriptPath = channelConfig?.on_message ?? config.defaultHook;
+
+    if (!scriptPath) {
+      return;
+    }
+
+    const channelName = channelConfig?.name ?? message.channelId;
+
+    this.stats?.recordMessageReceived();
+    this.audit.write("message_received", {
+      channel: channelName,
+      channelId: message.channelId,
+      user: message.author.username,
+      userId: message.author.id,
+    });
+
+    await this.runHook(message, scriptPath, config.configDir);
+  }
+
+  private async runHook(
+    message: Message,
+    scriptPath: string,
+    configDir?: string
+  ): Promise<void> {
     const input = buildHookInput(message);
     const startTime = Date.now();
     const result = await this.hookExecutor(scriptPath, input, {
       signal: this.abortController.signal,
-      cwd: this.config.configDir,
+      cwd: configDir ?? this.config.configDir,
     });
     const durationMs = Date.now() - startTime;
 

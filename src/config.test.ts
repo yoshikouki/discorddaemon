@@ -198,6 +198,54 @@ on_message = "./hooks/b.sh"
     expect(config.channels.get("222")?.name).toBe("random");
   });
 
+  test("returns configPath as resolved absolute path", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+`);
+    const config = await loadConfig(path);
+    expect(config.configPath).toBe(path);
+  });
+
+  test("parses default_hook from config", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+default_hook = "./hooks/observe.sh"
+`);
+    const config = await loadConfig(path);
+    expect(config.defaultHook).toBe("./hooks/observe.sh");
+  });
+
+  test("defaultHook is undefined when not set", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+`);
+    const config = await loadConfig(path);
+    expect(config.defaultHook).toBeUndefined();
+  });
+
+  test("defaultHook is undefined for empty string", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+default_hook = ""
+`);
+    const config = await loadConfig(path);
+    expect(config.defaultHook).toBeUndefined();
+  });
+
+  test("trims whitespace from default_hook", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+default_hook = "  ./hooks/observe.sh  "
+`);
+    const config = await loadConfig(path);
+    expect(config.defaultHook).toBe("./hooks/observe.sh");
+  });
+
   test("parses default_guild from config", async () => {
     const path = await writeConfig(`
 [bot]

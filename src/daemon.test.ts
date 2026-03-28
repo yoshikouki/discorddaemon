@@ -1,4 +1,7 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Message } from "discord.js";
 import type { AuditEntry, AuditEvent } from "./audit";
 import { buildHookInput, Daemon } from "./daemon";
@@ -23,8 +26,17 @@ function fakeMessage(
   } as unknown as Message;
 }
 
-function makeConfig(channels: Map<string, ChannelConfig> = new Map()): Config {
-  return { token: "fake-token", channels, configDir: "/tmp/ddd-test" };
+function makeConfig(
+  channels: Map<string, ChannelConfig> = new Map(),
+  overrides: Partial<Config> = {}
+): Config {
+  return {
+    token: "fake-token",
+    channels,
+    configDir: "/tmp/ddd-test",
+    configPath: "/tmp/ddd-test/ddd.toml",
+    ...overrides,
+  };
 }
 
 function makeChannelMap(
@@ -132,28 +144,132 @@ describe("Daemon.handleMessage", () => {
     (daemon as any).handleMessage(msg);
     expect(executor).not.toHaveBeenCalled();
   });
+});
 
-  test("ignores messages from unconfigured channels", () => {
+describe("Daemon.resolveAndRunHook", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "ddd-daemon-test-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true });
+  });
+
+  async function writeConfig(content: string): Promise<string> {
+    const path = join(dir, "ddd.toml");
+    await Bun.write(path, content);
+    return path;
+  }
+
+  test("ignores messages from unconfigured channels without default_hook", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+
+[channels.general]
+id = "ch-1"
+on_message = "./hooks/test.sh"
+`);
     const executor = mock(() => Promise.resolve(successResult()));
-    const config = makeConfig(makeChannelMap(defaultChannel));
+    const config = makeConfig(makeChannelMap(defaultChannel), {
+      configPath: path,
+    });
     const daemon = new Daemon(config, executor);
 
     const msg = fakeMessage({ channelId: "unknown-channel" });
-    (daemon as any).handleMessage(msg);
+    await (daemon as any).resolveAndRunHook(msg);
     expect(executor).not.toHaveBeenCalled();
   });
 
-  test("records stats and audit on message received", () => {
+  test("records stats and audit on message received", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+
+[channels.general]
+id = "ch-1"
+on_message = "./hooks/test.sh"
+`);
     const executor = mock(() => Promise.resolve(successResult()));
-    const config = makeConfig(makeChannelMap(defaultChannel));
+    const config = makeConfig(makeChannelMap(defaultChannel), {
+      configPath: path,
+    });
     const stats = new StatsTracker(1);
     const { events, writer: audit } = mockAudit();
     const daemon = new Daemon(config, executor, { stats, audit });
 
-    (daemon as any).handleMessage(fakeMessage());
+    await (daemon as any).resolveAndRunHook(fakeMessage());
 
     expect(stats.getStats().messagesReceived).toBe(1);
     expect(events.some((e) => e.event === "message_received")).toBe(true);
+  });
+
+  test("uses default_hook for unconfigured channels", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+default_hook = "./hooks/default.sh"
+`);
+    const executor = mock(() => Promise.resolve(successResult()));
+    const config = makeConfig(new Map(), { configPath: path });
+    const stats = new StatsTracker(0);
+    const daemon = new Daemon(config, executor, { stats });
+
+    await (daemon as any).resolveAndRunHook(
+      fakeMessage({ channelId: "any-channel" })
+    );
+
+    expect(executor).toHaveBeenCalledTimes(1);
+    expect(executor.mock.calls[0][0]).toBe("./hooks/default.sh");
+    expect(stats.getStats().messagesReceived).toBe(1);
+  });
+
+  test("channel-specific hook overrides default_hook", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+default_hook = "./hooks/default.sh"
+
+[channels.general]
+id = "ch-1"
+on_message = "./hooks/specific.sh"
+`);
+    const executor = mock(() => Promise.resolve(successResult()));
+    const config = makeConfig(makeChannelMap(defaultChannel), {
+      configPath: path,
+    });
+    const daemon = new Daemon(config, executor);
+
+    await (daemon as any).resolveAndRunHook(fakeMessage());
+
+    expect(executor).toHaveBeenCalledTimes(1);
+    expect(executor.mock.calls[0][0]).toBe("./hooks/specific.sh");
+  });
+
+  test("picks up config changes without restart", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+default_hook = "./hooks/old.sh"
+`);
+    const executor = mock(() => Promise.resolve(successResult()));
+    const config = makeConfig(new Map(), { configPath: path });
+    const daemon = new Daemon(config, executor);
+
+    await (daemon as any).resolveAndRunHook(fakeMessage());
+    expect(executor.mock.calls[0][0]).toBe("./hooks/old.sh");
+
+    // Change config on disk
+    await writeConfig(`
+[bot]
+token = "tok"
+default_hook = "./hooks/new.sh"
+`);
+
+    await (daemon as any).resolveAndRunHook(fakeMessage());
+    expect(executor.mock.calls[1][0]).toBe("./hooks/new.sh");
   });
 });
 

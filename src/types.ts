@@ -7,7 +7,9 @@ export interface ChannelConfig {
 export interface Config {
   channels: Map<string, ChannelConfig>;
   configDir: string;
+  configPath: string;
   defaultGuild?: string;
+  defaultHook?: string;
   token: string;
 }
 
