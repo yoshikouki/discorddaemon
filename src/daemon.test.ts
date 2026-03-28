@@ -163,7 +163,7 @@ describe("Daemon.resolveAndRunHook", () => {
     return path;
   }
 
-  test("ignores messages from unconfigured channels without default_hook", async () => {
+  test("ignores messages from unconfigured channels without wildcard", async () => {
     const path = await writeConfig(`
 [bot]
 token = "tok"
@@ -206,11 +206,13 @@ on_message = "./hooks/test.sh"
     expect(events.some((e) => e.event === "message_received")).toBe(true);
   });
 
-  test("uses default_hook for unconfigured channels", async () => {
+  test("uses wildcard hook for unconfigured channels", async () => {
     const path = await writeConfig(`
 [bot]
 token = "tok"
-default_hook = "./hooks/default.sh"
+
+[channels."*"]
+on_message = "./hooks/default.sh"
 `);
     const executor = mock(() => Promise.resolve(successResult()));
     const config = makeConfig(new Map(), { configPath: path });
@@ -226,11 +228,13 @@ default_hook = "./hooks/default.sh"
     expect(stats.getStats().messagesReceived).toBe(1);
   });
 
-  test("channel-specific hook overrides default_hook", async () => {
+  test("channel-specific hook overrides wildcard", async () => {
     const path = await writeConfig(`
 [bot]
 token = "tok"
-default_hook = "./hooks/default.sh"
+
+[channels."*"]
+on_message = "./hooks/default.sh"
 
 [channels.general]
 id = "ch-1"
@@ -252,7 +256,9 @@ on_message = "./hooks/specific.sh"
     const path = await writeConfig(`
 [bot]
 token = "tok"
-default_hook = "./hooks/old.sh"
+
+[channels."*"]
+on_message = "./hooks/old.sh"
 `);
     const executor = mock(() => Promise.resolve(successResult()));
     const config = makeConfig(new Map(), { configPath: path });
@@ -265,7 +271,9 @@ default_hook = "./hooks/old.sh"
     await writeConfig(`
 [bot]
 token = "tok"
-default_hook = "./hooks/new.sh"
+
+[channels."*"]
+on_message = "./hooks/new.sh"
 `);
 
     await (daemon as any).resolveAndRunHook(fakeMessage());

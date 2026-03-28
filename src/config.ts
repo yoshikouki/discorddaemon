@@ -31,6 +31,43 @@ export async function resolveToken(opts?: {
   );
 }
 
+function parseChannels(
+  channelsObj: Record<string, Record<string, string>> | undefined
+): { channels: Map<string, ChannelConfig>; wildcardHook?: string } {
+  const channels = new Map<string, ChannelConfig>();
+  let wildcardHook: string | undefined;
+
+  if (!channelsObj) {
+    return { channels };
+  }
+
+  for (const [name, values] of Object.entries(channelsObj)) {
+    if (name === "*") {
+      const onMessage = values?.on_message?.trim();
+      if (onMessage) {
+        wildcardHook = onMessage;
+      }
+      continue;
+    }
+
+    const id = values?.id;
+    const onMessage = values?.on_message;
+
+    if (!id) {
+      throw new Error(`Channel "${name}" is missing required field: id`);
+    }
+    if (!onMessage) {
+      throw new Error(
+        `Channel "${name}" is missing required field: on_message`
+      );
+    }
+
+    channels.set(id, { id, name, on_message: onMessage });
+  }
+
+  return { channels, wildcardHook };
+}
+
 export async function loadConfig(path = CONFIG_PATH): Promise<Config> {
   const resolvedPath = resolve(path);
   const file = Bun.file(resolvedPath);
@@ -49,37 +86,13 @@ export async function loadConfig(path = CONFIG_PATH): Promise<Config> {
     );
   }
 
-  const channels = new Map<string, ChannelConfig>();
-  const channelsObj = parsed.channels as
-    | Record<string, Record<string, string>>
-    | undefined;
-
-  if (channelsObj) {
-    for (const [name, values] of Object.entries(channelsObj)) {
-      const id = values?.id;
-      const onMessage = values?.on_message;
-
-      if (!id) {
-        throw new Error(`Channel "${name}" is missing required field: id`);
-      }
-      if (!onMessage) {
-        throw new Error(
-          `Channel "${name}" is missing required field: on_message`
-        );
-      }
-
-      channels.set(id, { id, name, on_message: onMessage });
-    }
-  }
+  const { channels, wildcardHook } = parseChannels(
+    parsed.channels as Record<string, Record<string, string>> | undefined
+  );
 
   const defaultGuild =
     typeof bot?.default_guild === "string" && bot.default_guild.trim()
       ? bot.default_guild.trim()
-      : undefined;
-
-  const defaultHook =
-    typeof bot?.default_hook === "string" && bot.default_hook.trim()
-      ? bot.default_hook.trim()
       : undefined;
 
   const configDir = dirname(resolvedPath);
@@ -89,6 +102,6 @@ export async function loadConfig(path = CONFIG_PATH): Promise<Config> {
     configDir,
     configPath: resolvedPath,
     defaultGuild,
-    defaultHook,
+    wildcardHook,
   };
 }

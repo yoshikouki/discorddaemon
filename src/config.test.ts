@@ -207,43 +207,68 @@ token = "tok"
     expect(config.configPath).toBe(path);
   });
 
-  test("parses default_hook from config", async () => {
+  test('parses wildcard channel [channels."*"]', async () => {
     const path = await writeConfig(`
 [bot]
 token = "tok"
-default_hook = "./hooks/observe.sh"
+
+[channels."*"]
+on_message = "./hooks/observe.sh"
 `);
     const config = await loadConfig(path);
-    expect(config.defaultHook).toBe("./hooks/observe.sh");
+    expect(config.wildcardHook).toBe("./hooks/observe.sh");
+    expect(config.channels.has("*")).toBe(false);
   });
 
-  test("defaultHook is undefined when not set", async () => {
+  test("wildcardHook is undefined when not set", async () => {
     const path = await writeConfig(`
 [bot]
 token = "tok"
 `);
     const config = await loadConfig(path);
-    expect(config.defaultHook).toBeUndefined();
+    expect(config.wildcardHook).toBeUndefined();
   });
 
-  test("defaultHook is undefined for empty string", async () => {
+  test("wildcardHook is undefined for empty on_message", async () => {
     const path = await writeConfig(`
 [bot]
 token = "tok"
-default_hook = ""
+
+[channels."*"]
+on_message = ""
 `);
     const config = await loadConfig(path);
-    expect(config.defaultHook).toBeUndefined();
+    expect(config.wildcardHook).toBeUndefined();
   });
 
-  test("trims whitespace from default_hook", async () => {
+  test("trims whitespace from wildcard on_message", async () => {
     const path = await writeConfig(`
 [bot]
 token = "tok"
-default_hook = "  ./hooks/observe.sh  "
+
+[channels."*"]
+on_message = "  ./hooks/observe.sh  "
 `);
     const config = await loadConfig(path);
-    expect(config.defaultHook).toBe("./hooks/observe.sh");
+    expect(config.wildcardHook).toBe("./hooks/observe.sh");
+  });
+
+  test("wildcard does not appear in channels map", async () => {
+    const path = await writeConfig(`
+[bot]
+token = "tok"
+
+[channels."*"]
+on_message = "./hooks/observe.sh"
+
+[channels.general]
+id = "111"
+on_message = "./hooks/echo.sh"
+`);
+    const config = await loadConfig(path);
+    expect(config.wildcardHook).toBe("./hooks/observe.sh");
+    expect(config.channels.size).toBe(1);
+    expect(config.channels.get("111")?.name).toBe("general");
   });
 
   test("parses default_guild from config", async () => {

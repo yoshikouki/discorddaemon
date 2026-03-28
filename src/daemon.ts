@@ -129,7 +129,7 @@ export class Daemon {
   private async resolveAndRunHook(message: Message): Promise<void> {
     const config = await loadConfig(this.config.configPath);
     const channelConfig = config.channels.get(message.channelId);
-    const scriptPath = channelConfig?.on_message ?? config.defaultHook;
+    const scriptPath = channelConfig?.on_message ?? config.wildcardHook;
 
     if (!scriptPath) {
       return;

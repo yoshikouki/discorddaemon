@@ -9,8 +9,8 @@ export interface Config {
   configDir: string;
   configPath: string;
   defaultGuild?: string;
-  defaultHook?: string;
   token: string;
+  wildcardHook?: string;
 }
 
 export interface HookInput {
