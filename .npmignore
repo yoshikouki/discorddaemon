@@ -1,0 +1,14 @@
+*.test.ts
+src/fixtures/
+docs/
+scripts/
+tasks/
+.husky/
+.github/
+.zed/
+.claude/
+biome.jsonc
+tsconfig.json
+bun.lock
+CLAUDE.md
+ddd.toml
