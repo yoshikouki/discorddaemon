@@ -4,6 +4,10 @@ Discord daemon with per-channel hooks. UNIX philosophy for Discord bots.
 
 **One daemon, many hooks.** Each Discord channel routes to its own script. Your hook receives a message on stdin, writes a reply to stdout. That's it.
 
+## Requirements
+
+- [Bun](https://bun.sh/) >= 1.3.10
+
 ## Install
 
 ```bash

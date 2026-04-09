@@ -2,9 +2,7 @@
   "name": "discorddaemon",
   "version": "0.1.0",
   "description": "Discord daemon with per-channel hooks. UNIX philosophy for Discord bots.",
-  "module": "src/index.ts",
   "type": "module",
-  "private": true,
   "bin": {
     "ddd": "src/index.ts"
   },
@@ -16,7 +14,7 @@
     "check": "ultracite check",
     "docs": "bun run scripts/docs.ts",
     "fix": "ultracite fix",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "engines": {
     "bun": ">=1.3.10"
@@ -30,8 +28,27 @@
     "husky": "^9.1.7",
     "ultracite": "7.3.2"
   },
-  "peerDependencies": {
-    "typescript": "^5"
+  "author": "yoshikouki",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yoshikouki/discorddaemon.git"
   },
-  "license": "MIT"
+  "homepage": "https://github.com/yoshikouki/discorddaemon#readme",
+  "bugs": "https://github.com/yoshikouki/discorddaemon/issues",
+  "keywords": [
+    "discord",
+    "bot",
+    "daemon",
+    "hooks",
+    "cli",
+    "bun"
+  ],
+  "files": [
+    "src/**/*.ts",
+    "!src/**/*.test.ts",
+    "!src/fixtures/",
+    "hooks/",
+    "ddd.toml.example"
+  ]
 }
