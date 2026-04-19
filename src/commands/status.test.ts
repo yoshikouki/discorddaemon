@@ -5,13 +5,18 @@ const noop = () => {
   // no-op mock
 };
 
+const liveState = async () => ({
+  pid: 1234,
+  pidAlive: true,
+  socketConnectable: true,
+  socketExists: true,
+});
+
 describe("statusCommand", () => {
   test("reports running daemon", async () => {
     const exit = mock((_code: number) => noop());
     await statusCommand({
-      readPid: async () => 1234,
-      isProcessRunning: () => true,
-      removePid: async () => noop(),
+      inspectRuntimeState: liveState,
       fetchInfo: async () => null,
       exit,
     });
@@ -21,25 +26,55 @@ describe("statusCommand", () => {
   test("reports not running when no PID file", async () => {
     const exit = mock((_code: number) => noop());
     await statusCommand({
-      readPid: async () => null,
-      isProcessRunning: () => false,
-      removePid: async () => noop(),
+      inspectRuntimeState: async () => ({
+        pid: null,
+        pidAlive: false,
+        socketConnectable: false,
+        socketExists: true,
+      }),
       exit,
     });
     expect(exit).toHaveBeenCalledWith(1);
   });
 
-  test("cleans up stale PID file", async () => {
+  test("reports stale PID file without mutating it", async () => {
     const exit = mock((_code: number) => noop());
-    const remove = mock(async () => noop());
     await statusCommand({
-      readPid: async () => 9999,
-      isProcessRunning: () => false,
-      removePid: remove,
+      inspectRuntimeState: async () => ({
+        pid: 9999,
+        pidAlive: false,
+        socketConnectable: true,
+        socketExists: true,
+      }),
       exit,
     });
     expect(exit).toHaveBeenCalledWith(1);
-    expect(remove).toHaveBeenCalled();
+  });
+
+  test("reports stale socket file without mutating it", async () => {
+    const exit = mock((_code: number) => noop());
+    const lines: string[] = [];
+    const original = console.error;
+    console.error = mock((...args: unknown[]) => lines.push(String(args[0])));
+
+    try {
+      await statusCommand({
+        inspectRuntimeState: async () => ({
+          pid: null,
+          pidAlive: false,
+          socketConnectable: false,
+          socketExists: true,
+        }),
+        exit,
+      });
+
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(lines.some((l) => l.includes("stale socket file present"))).toBe(
+        true
+      );
+    } finally {
+      console.error = original;
+    }
   });
 
   test("shows rich info when IPC available", async () => {
@@ -50,9 +85,7 @@ describe("statusCommand", () => {
 
     try {
       await statusCommand({
-        readPid: async () => 1234,
-        isProcessRunning: () => true,
-        removePid: async () => noop(),
+        inspectRuntimeState: liveState,
         fetchInfo: async () => ({
           uptime: 3661,
           pid: 1234,
@@ -89,9 +122,7 @@ describe("statusCommand", () => {
 
     try {
       await statusCommand({
-        readPid: async () => 1234,
-        isProcessRunning: () => true,
-        removePid: async () => noop(),
+        inspectRuntimeState: liveState,
         fetchInfo: async () => null,
         exit,
       });

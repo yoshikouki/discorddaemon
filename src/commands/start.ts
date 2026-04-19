@@ -5,6 +5,7 @@ import { Daemon } from "../daemon";
 import { createLogger } from "../logger";
 import { DATA_DIR, LOG_PATH } from "../paths";
 import { isProcessRunning, readPid, removePid, writePid } from "../pid";
+import { cleanupStaleRuntimeState } from "../runtime";
 import { StatsTracker } from "../stats";
 
 function log(msg: string): void {
@@ -44,6 +45,7 @@ async function startForeground(args: { config?: string }): Promise<void> {
   });
 
   const config = await loadConfig(args.config);
+  await cleanupStaleRuntimeState();
   const logger = createLogger({
     mode: process.stderr.isTTY ? "human" : "json",
   });
@@ -69,18 +71,25 @@ async function startForeground(args: { config?: string }): Promise<void> {
       process.on("SIGTERM", shutdown);
     });
 
-  await runForegroundLoop(daemon, waitForShutdown);
+  try {
+    await runForegroundLoop(daemon, waitForShutdown);
+  } catch (err) {
+    await removePid().catch(() => {
+      // best-effort cleanup
+    });
+    await cleanupStaleRuntimeState();
+    throw err;
+  }
 }
 
 async function startDaemon(args: { config?: string }): Promise<void> {
   // Check for already running daemon
+  await loadConfig(args.config);
+  await cleanupStaleRuntimeState();
   const existingPid = await readPid();
   if (existingPid !== null && isProcessRunning(existingPid)) {
     throw new Error(`Daemon already running (PID: ${existingPid})`);
   }
-
-  // Validate config before spawning (fail fast)
-  await loadConfig(args.config);
 
   // Ensure data directory exists and open log file
   mkdirSync(DATA_DIR, { recursive: true });
@@ -101,6 +110,7 @@ async function startDaemon(args: { config?: string }): Promise<void> {
 
   if (!isProcessRunning(child.pid)) {
     await removePid();
+    await cleanupStaleRuntimeState();
     throw new Error(`Daemon failed to start. Check log: ${LOG_PATH}`);
   }
 
