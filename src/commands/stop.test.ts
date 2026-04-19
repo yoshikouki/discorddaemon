@@ -34,13 +34,25 @@ function makeDeps(
 }
 
 describe("stopCommand", () => {
+  test("delegates to service manager when available", async () => {
+    const serviceManager = {
+      start: mock(() => Promise.resolve()),
+      status: mock(() => Promise.resolve({ running: true, pid: 42 })),
+      stop: mock(() => Promise.resolve()),
+    };
+
+    await stopCommand({ serviceManager: serviceManager as never });
+
+    expect(serviceManager.stop).toHaveBeenCalledTimes(1);
+  });
+
   test("stops a running daemon with SIGTERM", async () => {
     const { deps, killed } = makeDeps({
       pid: 5678,
       running: [true, false],
     });
 
-    await stopCommand(deps);
+    await stopCommand({ ...deps, resolveServiceManager: async () => null });
 
     expect(killed).toEqual([{ pid: 5678, signal: "SIGTERM" }]);
     expect(deps.removePid).toHaveBeenCalled();
@@ -48,12 +60,16 @@ describe("stopCommand", () => {
 
   test("throws when no PID file exists", async () => {
     const { deps } = makeDeps({ pid: null });
-    await expect(stopCommand(deps)).rejects.toThrow("No PID file found");
+    await expect(
+      stopCommand({ ...deps, resolveServiceManager: async () => null })
+    ).rejects.toThrow("No PID file found");
   });
 
   test("throws and cleans up stale PID file", async () => {
     const { deps } = makeDeps({ pid: 9999, running: false });
-    await expect(stopCommand(deps)).rejects.toThrow("stale PID file");
+    await expect(
+      stopCommand({ ...deps, resolveServiceManager: async () => null })
+    ).rejects.toThrow("stale PID file");
     expect(deps.removePid).toHaveBeenCalled();
   });
 
@@ -79,7 +95,7 @@ describe("stopCommand", () => {
     };
 
     try {
-      await stopCommand(deps);
+      await stopCommand({ ...deps, resolveServiceManager: async () => null });
       const signals = killed.map((k) => k.signal);
       expect(signals).toContain("SIGTERM");
       expect(signals).toContain("SIGKILL");

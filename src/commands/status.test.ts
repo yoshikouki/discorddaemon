@@ -13,12 +13,48 @@ const liveState = async () => ({
 });
 
 describe("statusCommand", () => {
+  test("uses service manager status when available", async () => {
+    const exit = mock((_code: number) => noop());
+    const serviceManager = {
+      start: mock(() => Promise.resolve()),
+      status: mock(() => Promise.resolve({ running: true, pid: 4321 })),
+      stop: mock(() => Promise.resolve()),
+    };
+    const fetchInfo = mock(() => Promise.resolve(null));
+
+    await statusCommand({
+      serviceManager: serviceManager as never,
+      fetchInfo,
+      exit,
+    });
+
+    expect(serviceManager.status).toHaveBeenCalledTimes(1);
+    expect(fetchInfo).toHaveBeenCalledTimes(1);
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+
+  test("falls back to legacy runtime inspection when no service manager is available", async () => {
+    const exit = mock((_code: number) => noop());
+    const inspectRuntimeState = mock(liveState);
+
+    await statusCommand({
+      inspectRuntimeState,
+      fetchInfo: async () => null,
+      exit,
+      resolveServiceManager: async () => null,
+    });
+
+    expect(inspectRuntimeState).toHaveBeenCalledTimes(1);
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+
   test("reports running daemon", async () => {
     const exit = mock((_code: number) => noop());
     await statusCommand({
       inspectRuntimeState: liveState,
       fetchInfo: async () => null,
       exit,
+      resolveServiceManager: async () => null,
     });
     expect(exit).toHaveBeenCalledWith(0);
   });
@@ -33,6 +69,7 @@ describe("statusCommand", () => {
         socketExists: true,
       }),
       exit,
+      resolveServiceManager: async () => null,
     });
     expect(exit).toHaveBeenCalledWith(1);
   });
@@ -47,6 +84,7 @@ describe("statusCommand", () => {
         socketExists: true,
       }),
       exit,
+      resolveServiceManager: async () => null,
     });
     expect(exit).toHaveBeenCalledWith(1);
   });
@@ -66,6 +104,7 @@ describe("statusCommand", () => {
           socketExists: true,
         }),
         exit,
+        resolveServiceManager: async () => null,
       });
 
       expect(exit).toHaveBeenCalledWith(1);
@@ -98,6 +137,7 @@ describe("statusCommand", () => {
           lastEventTime: "2026-03-26T12:00:00.000Z",
         }),
         exit,
+        resolveServiceManager: async () => null,
       });
 
       expect(exit).toHaveBeenCalledWith(0);
@@ -125,6 +165,7 @@ describe("statusCommand", () => {
         inspectRuntimeState: liveState,
         fetchInfo: async () => null,
         exit,
+        resolveServiceManager: async () => null,
       });
 
       expect(exit).toHaveBeenCalledWith(0);

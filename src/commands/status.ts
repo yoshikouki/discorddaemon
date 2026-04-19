@@ -2,11 +2,17 @@ import { IpcClient } from "../ipc/client";
 import type { DaemonInfoResult } from "../ipc/protocol";
 import { ConnectionRefusedError } from "../ipc/protocol";
 import { inspectRuntimeState } from "../runtime";
+import {
+  resolveServiceManager as resolveServiceManagerImpl,
+  type ServiceManager,
+} from "../service-manager";
 
 export interface StatusDeps {
   exit?: (code: number) => void;
   fetchInfo?: () => Promise<DaemonInfoResult | null>;
   inspectRuntimeState?: typeof inspectRuntimeState;
+  resolveServiceManager?: typeof resolveServiceManagerImpl;
+  serviceManager?: ServiceManager | null;
 }
 
 export function formatUptime(seconds: number): string {
@@ -58,21 +64,38 @@ function printDaemonInfo(info: DaemonInfoResult): void {
   }
 }
 
-export async function statusCommand(deps: StatusDeps = {}): Promise<void> {
-  const exit = deps.exit ?? process.exit;
-  const fetchInfo = deps.fetchInfo ?? defaultFetchInfo;
-  const inspect = deps.inspectRuntimeState ?? inspectRuntimeState;
+function printManagedServiceState(state: {
+  message?: string;
+  pid?: number;
+  running: boolean;
+}): void {
+  if (!state.running) {
+    console.error(
+      state.message
+        ? `[ddd] Daemon is not running (${state.message})`
+        : "[ddd] Daemon is not running"
+    );
+    return;
+  }
 
-  const state = await inspect();
+  if (state.pid == null) {
+    console.error("[ddd] Daemon is running");
+    return;
+  }
 
+  console.error(`[ddd] Daemon is running (PID: ${state.pid})`);
+}
+
+function printLegacyRuntimeState(
+  state: Awaited<ReturnType<typeof inspectRuntimeState>>
+): boolean {
   if (state.pid === null) {
     if (state.socketExists && state.socketConnectable === false) {
       console.error("[ddd] Daemon is not running (stale socket file present)");
     } else {
       console.error("[ddd] Daemon is not running");
     }
-    exit(1);
-    return;
+    return false;
   }
 
   if (!state.pidAlive) {
@@ -83,11 +106,22 @@ export async function statusCommand(deps: StatusDeps = {}): Promise<void> {
     } else {
       console.error("[ddd] Daemon is not running (stale PID file present)");
     }
-    exit(1);
-    return;
+    return false;
   }
 
   console.error(`[ddd] Daemon is running (PID: ${state.pid})`);
+  return true;
+}
+
+async function printCurrentStatus(
+  fetchInfo: () => Promise<DaemonInfoResult | null>,
+  exit: (code: number) => void,
+  isRunning: boolean
+): Promise<void> {
+  if (!isRunning) {
+    exit(1);
+    return;
+  }
 
   const info = await fetchInfo();
   if (info) {
@@ -95,4 +129,23 @@ export async function statusCommand(deps: StatusDeps = {}): Promise<void> {
   }
 
   exit(0);
+}
+
+export async function statusCommand(deps: StatusDeps = {}): Promise<void> {
+  const exit = deps.exit ?? process.exit;
+  const fetchInfo = deps.fetchInfo ?? defaultFetchInfo;
+  const resolveServiceManager =
+    deps.resolveServiceManager ?? resolveServiceManagerImpl;
+  const serviceManager = deps.serviceManager ?? (await resolveServiceManager());
+
+  if (serviceManager) {
+    const state = await serviceManager.status();
+    printManagedServiceState(state);
+    await printCurrentStatus(fetchInfo, exit, state.running);
+    return;
+  }
+
+  const inspect = deps.inspectRuntimeState ?? inspectRuntimeState;
+  const state = await inspect();
+  await printCurrentStatus(fetchInfo, exit, printLegacyRuntimeState(state));
 }

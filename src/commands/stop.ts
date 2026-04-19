@@ -1,4 +1,8 @@
 import { isProcessRunning, readPid, removePid } from "../pid";
+import {
+  resolveServiceManager as resolveServiceManagerImpl,
+  type ServiceManager,
+} from "../service-manager";
 
 function log(msg: string): void {
   console.error(`[ddd] ${msg}`);
@@ -9,10 +13,20 @@ export interface StopDeps {
   kill?: (pid: number, signal: NodeJS.Signals) => void;
   readPid?: typeof readPid;
   removePid?: typeof removePid;
+  resolveServiceManager?: typeof resolveServiceManagerImpl;
+  serviceManager?: ServiceManager | null;
   sleep?: (ms: number) => Promise<void>;
 }
 
 export async function stopCommand(deps: StopDeps = {}): Promise<void> {
+  const resolveServiceManager =
+    deps.resolveServiceManager ?? resolveServiceManagerImpl;
+  const manager = deps.serviceManager ?? (await resolveServiceManager());
+  if (manager) {
+    await manager.stop();
+    return;
+  }
+
   const kill = deps.kill ?? ((pid, sig) => process.kill(pid, sig));
   const read = deps.readPid ?? readPid;
   const remove = deps.removePid ?? removePid;

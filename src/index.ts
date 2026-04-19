@@ -10,9 +10,9 @@ import { stopCommand } from "./commands/stop";
 const USAGE = `Usage: ddd <command>
 
 Commands:
-  start [-c path] [-f]                                   Start the daemon (background by default)
-  stop                                                   Stop the daemon
-  status                                                 Check if the daemon is running
+  start [-c path] [-f]                                   Start the daemon or service
+  stop                                                   Stop the daemon or service
+  status                                                 Check daemon/service status
   init                                                   Scaffold ~/.config/ddd/ config and hooks
   channels [-c path] [-t token]                          List available Discord channels
   messages list <channel_id> [-n limit]                  Fetch messages from a channel

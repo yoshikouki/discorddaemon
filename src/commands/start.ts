@@ -6,6 +6,10 @@ import { createLogger } from "../logger";
 import { DATA_DIR, LOG_PATH } from "../paths";
 import { isProcessRunning, readPid, removePid, writePid } from "../pid";
 import { cleanupStaleRuntimeState } from "../runtime";
+import {
+  resolveServiceManager as resolveServiceManagerImpl,
+  type ServiceManager,
+} from "../service-manager";
 import { StatsTracker } from "../stats";
 
 function log(msg: string): void {
@@ -28,14 +32,49 @@ export async function runForegroundLoop(
   }
 }
 
-export function startCommand(args: {
-  config?: string;
-  foreground?: boolean;
-}): Promise<void> {
+export async function startCommand(
+  args: {
+    config?: string;
+    foreground?: boolean;
+  },
+  deps: {
+    serviceManager?: ServiceManager | null;
+    startDaemon?: typeof startDaemon;
+    resolveServiceManager?: typeof resolveServiceManagerImpl;
+  } = {}
+): Promise<void> {
   if (args.foreground) {
     return startForeground(args);
   }
-  return startDaemon(args);
+  const handled = await startManagedOrLegacy(
+    args,
+    deps.serviceManager,
+    deps.resolveServiceManager ?? resolveServiceManagerImpl
+  );
+  if (handled) {
+    return;
+  }
+  return (deps.startDaemon ?? startDaemon)(args);
+}
+
+async function startManagedOrLegacy(
+  args: { config?: string },
+  serviceManager?: ServiceManager | null,
+  resolveServiceManager: typeof resolveServiceManagerImpl = resolveServiceManagerImpl
+): Promise<boolean> {
+  const manager = serviceManager ?? (await resolveServiceManager());
+  if (!manager) {
+    return false;
+  }
+
+  if (args.config) {
+    throw new Error(
+      "Custom config is not supported when starting under a service manager. Omit -c or use --foreground."
+    );
+  }
+
+  await manager.start();
+  return true;
 }
 
 async function startForeground(args: { config?: string }): Promise<void> {
