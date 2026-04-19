@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
   detectServiceManager,
   listServiceManagers,
+  renderLaunchdPlist,
+  renderSystemdUserUnit,
   resolveServiceManager,
+  resolveSupportedServiceManager,
 } from "./service-manager";
 import {
   createLaunchdServiceManager,
@@ -24,12 +27,21 @@ import {
 
 describe("service-manager detection", () => {
   test("resolveServiceManager returns a managed backend when context matches", async () => {
-    const manager = await resolveServiceManager({
+    const manager = await resolveSupportedServiceManager({
       platform: "linux",
       env: { INVOCATION_ID: "abc" },
     });
 
     expect(manager?.kind).toBe("systemd-user");
+  });
+
+  test("resolveServiceManager returns null until a managed service is installed", async () => {
+    const manager = await resolveServiceManager({
+      platform: "linux",
+      env: { INVOCATION_ID: "abc" },
+    });
+
+    expect(manager).toBeNull();
   });
 
   test("prefers launchd on macOS", () => {
@@ -145,5 +157,24 @@ describe("service-manager status normalization", () => {
       pid: 1234,
       socketState: "missing",
     });
+  });
+
+  test("renders a systemd user unit for foreground ddd", () => {
+    const unit = renderSystemdUserUnit();
+
+    expect(unit).toContain("[Service]");
+    expect(unit).toContain("ExecStart=");
+    expect(unit).toContain("start --foreground");
+    expect(unit).toContain("WantedBy=default.target");
+  });
+
+  test("renders a launchd plist for foreground ddd", () => {
+    const plist = renderLaunchdPlist();
+
+    expect(plist).toContain("<key>Label</key>");
+    expect(plist).toContain("com.yoshikouki.ddd");
+    expect(plist).toContain("<key>ProgramArguments</key>");
+    expect(plist).toContain("start");
+    expect(plist).toContain("--foreground");
   });
 });

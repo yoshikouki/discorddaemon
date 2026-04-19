@@ -2,10 +2,12 @@
 import { parseArgs } from "node:util";
 import { channelsCommand } from "./commands/channels";
 import { initCommand } from "./commands/init";
+import { installServiceCommand } from "./commands/install-service";
 import { messagesCommand } from "./commands/messages";
 import { startCommand } from "./commands/start";
 import { statusCommand } from "./commands/status";
 import { stopCommand } from "./commands/stop";
+import { uninstallServiceCommand } from "./commands/uninstall-service";
 
 const USAGE = `Usage: ddd <command>
 
@@ -13,6 +15,8 @@ Commands:
   start [-c path] [-f]                                   Start the daemon or service
   stop                                                   Stop the daemon or service
   status                                                 Check daemon/service status
+  install-service                                        Install user service files
+  uninstall-service                                      Remove user service files
   init                                                   Scaffold ~/.config/ddd/ config and hooks
   channels [-c path] [-t token]                          List available Discord channels
   messages list <channel_id> [-n limit]                  Fetch messages from a channel
@@ -53,6 +57,12 @@ function main(): void {
       break;
     case "status":
       statusCommand().catch(fatal);
+      break;
+    case "install-service":
+      installServiceCommand().catch(fatal);
+      break;
+    case "uninstall-service":
+      uninstallServiceCommand().catch(fatal);
       break;
     case "init":
       initCommand().catch(fatal);
