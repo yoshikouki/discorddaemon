@@ -11,6 +11,22 @@ function log(msg: string): void {
   console.error(`[ddd] ${msg}`);
 }
 
+export async function runForegroundLoop(
+  daemon: { start: () => Promise<void> },
+  waitForShutdown: () => Promise<void>
+): Promise<void> {
+  const keepAliveIntervalMs = 1_073_741_824;
+  const keepAlive = setInterval(() => {
+    // Intentionally empty: keeps the Bun event loop alive while the daemon runs.
+  }, keepAliveIntervalMs);
+  try {
+    await daemon.start();
+    await waitForShutdown();
+  } finally {
+    clearInterval(keepAlive);
+  }
+}
+
 export function startCommand(args: {
   config?: string;
   foreground?: boolean;
@@ -38,18 +54,22 @@ async function startForeground(args: { config?: string }): Promise<void> {
   mkdirSync(DATA_DIR, { recursive: true });
   await writePid(process.pid);
 
-  const shutdown = () => {
-    daemon.stop();
-    removePid().catch(() => {
-      // best-effort cleanup
+  const waitForShutdown = () =>
+    new Promise<void>((resolve) => {
+      const shutdown = () => {
+        daemon.stop();
+        removePid().catch(() => {
+          // best-effort cleanup
+        });
+        resolve();
+        process.exit(0);
+      };
+
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
     });
-    process.exit(0);
-  };
 
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-
-  await daemon.start();
+  await runForegroundLoop(daemon, waitForShutdown);
 }
 
 async function startDaemon(args: { config?: string }): Promise<void> {
