@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
 import { GatewayIntentBits } from "discord.js";
-import { loadConfig } from "../config";
+import { loadConfig, loadConfigMetadata } from "../config";
 import { withDiscordClient } from "../discord";
 import { resolveGuildFromCache } from "../guild";
 import {
@@ -182,6 +182,33 @@ async function resolveChannelNames(
   return channelNames;
 }
 
+async function resolveCommandContext(
+  configPath: string | undefined,
+  probe: typeof probeDaemon
+): Promise<{
+  defaultGuild?: string;
+  token: string;
+}> {
+  const probeResult = await probe();
+  if (probeResult.available) {
+    try {
+      const metadata = await loadConfigMetadata(configPath);
+      return {
+        token: "",
+        defaultGuild: metadata.defaultGuild,
+      };
+    } catch {
+      return { token: "" };
+    }
+  }
+
+  const config = await loadConfig(configPath);
+  return {
+    token: config.token,
+    defaultGuild: config.defaultGuild,
+  };
+}
+
 // --- Impl functions (business logic, used by both one-shot and IPC) ---
 
 export async function listMessagesImpl(
@@ -360,7 +387,8 @@ export async function listMessages(
     after?: string;
     around?: string;
   },
-  executor: MessageListExecutor = hybridListExecutor
+  executor: MessageListExecutor = hybridListExecutor,
+  probe: typeof probeDaemon = probeDaemon
 ): Promise<void> {
   validateLimit(args.limit, 1, 100);
 
@@ -370,8 +398,8 @@ export async function listMessages(
     "--before, --after, and --around are mutually exclusive"
   );
 
-  const config = await loadConfig(args.config);
-  const messages = await executor(config.token, args.channelId, {
+  const { token } = await resolveCommandContext(args.config, probe);
+  const messages = await executor(token, args.channelId, {
     limit: args.limit,
     before: args.before,
     after: args.after,
@@ -406,10 +434,7 @@ export async function sendMessage(
     throw new Error("Content must not be empty");
   }
 
-  const probeResult = await probe();
-  const token = probeResult.available
-    ? ""
-    : (await loadConfig(args.config)).token;
+  const { token } = await resolveCommandContext(args.config, probe);
 
   const message = await executor(token, args.channelId, content);
   console.log(JSON.stringify(message));
@@ -423,7 +448,8 @@ export async function editMessage(
     content?: string;
   },
   executor: MessageEditExecutor = hybridEditExecutor,
-  stdinReader: () => Promise<string | undefined> = readStdin
+  stdinReader: () => Promise<string | undefined> = readStdin,
+  probe: typeof probeDaemon = probeDaemon
 ): Promise<void> {
   let content = args.content;
   if (content === undefined) {
@@ -438,9 +464,9 @@ export async function editMessage(
     throw new Error("Content must not be empty");
   }
 
-  const config = await loadConfig(args.config);
+  const { token } = await resolveCommandContext(args.config, probe);
   const message = await executor(
-    config.token,
+    token,
     args.channelId,
     args.messageId,
     content
@@ -454,10 +480,11 @@ export async function deleteMessage(
     channelId: string;
     messageId: string;
   },
-  executor: MessageDeleteExecutor = hybridDeleteExecutor
+  executor: MessageDeleteExecutor = hybridDeleteExecutor,
+  probe: typeof probeDaemon = probeDaemon
 ): Promise<void> {
-  const config = await loadConfig(args.config);
-  await executor(config.token, args.channelId, args.messageId);
+  const { token } = await resolveCommandContext(args.config, probe);
+  await executor(token, args.channelId, args.messageId);
 }
 
 export async function reactMessage(
@@ -467,10 +494,11 @@ export async function reactMessage(
     messageId: string;
     emoji: string;
   },
-  executor: MessageReactExecutor = hybridReactExecutor
+  executor: MessageReactExecutor = hybridReactExecutor,
+  probe: typeof probeDaemon = probeDaemon
 ): Promise<void> {
-  const config = await loadConfig(args.config);
-  await executor(config.token, args.channelId, args.messageId, args.emoji);
+  const { token } = await resolveCommandContext(args.config, probe);
+  await executor(token, args.channelId, args.messageId, args.emoji);
 }
 
 export async function searchMessages(
@@ -485,7 +513,8 @@ export async function searchMessages(
     limit: number;
     offset: number;
   },
-  executor: MessageSearchExecutor = hybridSearchExecutor
+  executor: MessageSearchExecutor = hybridSearchExecutor,
+  probe: typeof probeDaemon = probeDaemon
 ): Promise<void> {
   validateLimit(args.limit, 1, 25);
   validateOffset(args.offset);
@@ -516,8 +545,8 @@ export async function searchMessages(
     );
   }
 
-  const config = await loadConfig(args.config);
-  const messages = await executor(config.token, args.guildId, {
+  const { token } = await resolveCommandContext(args.config, probe);
+  const messages = await executor(token, args.guildId, {
     content: trimmedContent,
     authorIds: args.authorIds,
     authorType: args.authorType,
@@ -540,17 +569,17 @@ export async function recentMessages(
     limit: number;
   },
   executor: MessageRecentExecutor = hybridRecentExecutor,
-  guildResolver: GuildResolverFn = hybridGuildResolver
+  guildResolver: GuildResolverFn = hybridGuildResolver,
+  probe: typeof probeDaemon = probeDaemon
 ): Promise<void> {
   validateLimit(args.limit, 1, 100);
 
-  const config = await loadConfig(args.config);
-  const guildId = await guildResolver(
-    config.token,
-    config.defaultGuild,
-    args.guildId
+  const { token, defaultGuild } = await resolveCommandContext(
+    args.config,
+    probe
   );
-  const messages = await executor(config.token, guildId, {
+  const guildId = await guildResolver(token, defaultGuild, args.guildId);
+  const messages = await executor(token, guildId, {
     channelIds: args.channelIds,
     limit: args.limit,
   });

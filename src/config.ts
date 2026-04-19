@@ -1,6 +1,11 @@
 import { dirname, resolve } from "node:path";
 import { CONFIG_PATH } from "./paths";
-import type { ChannelConfig, Config } from "./types";
+import type { ChannelConfig, Config, ConfigMetadata } from "./types";
+
+interface ParsedConfigFile {
+  bot?: Record<string, string>;
+  metadata: ConfigMetadata;
+}
 
 export async function resolveToken(opts?: {
   token?: string;
@@ -69,6 +74,24 @@ function parseChannels(
 }
 
 export async function loadConfig(path = CONFIG_PATH): Promise<Config> {
+  const { bot, metadata } = await parseConfigFile(path);
+  const token =
+    typeof bot?.token === "string" && bot.token.trim()
+      ? bot.token.trim()
+      : await resolveToken({ config: metadata.configPath });
+  return {
+    ...metadata,
+    token,
+  };
+}
+
+export async function loadConfigMetadata(
+  path = CONFIG_PATH
+): Promise<ConfigMetadata> {
+  return (await parseConfigFile(path)).metadata;
+}
+
+async function parseConfigFile(path = CONFIG_PATH): Promise<ParsedConfigFile> {
   const resolvedPath = resolve(path);
   const file = Bun.file(resolvedPath);
   if (!(await file.exists())) {
@@ -77,14 +100,7 @@ export async function loadConfig(path = CONFIG_PATH): Promise<Config> {
 
   const text = await file.text();
   const parsed = Bun.TOML.parse(text) as Record<string, unknown>;
-
   const bot = parsed.bot as Record<string, string> | undefined;
-  const token = bot?.token || process.env.DDD_TOKEN?.trim();
-  if (!token) {
-    throw new Error(
-      "Bot token is required: set [bot] token in ddd.toml or DDD_TOKEN env var"
-    );
-  }
 
   const { channels, wildcardHook } = parseChannels(
     parsed.channels as Record<string, Record<string, string>> | undefined
@@ -97,11 +113,13 @@ export async function loadConfig(path = CONFIG_PATH): Promise<Config> {
 
   const configDir = dirname(resolvedPath);
   return {
-    token,
-    channels,
-    configDir,
-    configPath: resolvedPath,
-    defaultGuild,
-    wildcardHook,
+    bot,
+    metadata: {
+      channels,
+      configDir,
+      configPath: resolvedPath,
+      defaultGuild,
+      wildcardHook,
+    },
   };
 }

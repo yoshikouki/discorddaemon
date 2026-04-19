@@ -176,6 +176,26 @@ describe("messages commands", () => {
 
       expect(lines).toHaveLength(0);
     });
+
+    test("uses IPC path without loading config when daemon is available", async () => {
+      const executor = mock(() => Promise.resolve([]));
+      const probe = mock(() =>
+        Promise.resolve({ available: true, socketPath: "socket" })
+      );
+
+      await listMessages(
+        { config: join(dir, "missing.toml"), channelId: "ch-1", limit: 50 },
+        executor,
+        probe
+      );
+
+      expect(executor).toHaveBeenCalledWith("", "ch-1", {
+        limit: 50,
+        before: undefined,
+        after: undefined,
+        around: undefined,
+      });
+    });
   });
 
   // --- sendMessage ---
@@ -399,6 +419,9 @@ describe("messages commands", () => {
     test('rejects --content "" as empty instead of falling to stdin', async () => {
       const executor = mock(() => Promise.resolve(fakeMessage()));
       const stdinReader = mock(() => Promise.resolve("from stdin"));
+      const probe = mock(() =>
+        Promise.resolve({ available: false, socketPath: "socket" })
+      );
 
       await expect(
         editMessage(
@@ -409,10 +432,42 @@ describe("messages commands", () => {
             content: "",
           },
           executor,
-          stdinReader
+          stdinReader,
+          probe
         )
       ).rejects.toThrow("Content must not be empty");
       expect(stdinReader).not.toHaveBeenCalled();
+    });
+
+    test("uses IPC path without loading config when daemon is available", async () => {
+      const executor = mock(() =>
+        Promise.resolve(
+          fakeMessage({ editedTimestamp: "2026-03-24T13:00:00.000Z" })
+        )
+      );
+      const stdinReader = mock(() => Promise.resolve(undefined));
+      const probe = mock(() =>
+        Promise.resolve({ available: true, socketPath: "socket" })
+      );
+
+      await editMessage(
+        {
+          config: join(dir, "missing.toml"),
+          channelId: "ch-1",
+          messageId: "msg-1",
+          content: "updated via ipc",
+        },
+        executor,
+        stdinReader,
+        probe
+      );
+
+      expect(executor).toHaveBeenCalledWith(
+        "",
+        "ch-1",
+        "msg-1",
+        "updated via ipc"
+      );
     });
   });
 
@@ -439,6 +494,25 @@ describe("messages commands", () => {
       );
 
       expect(lines).toHaveLength(0);
+    });
+
+    test("uses IPC path without loading config when daemon is available", async () => {
+      const executor = mock(() => Promise.resolve());
+      const probe = mock(() =>
+        Promise.resolve({ available: true, socketPath: "socket" })
+      );
+
+      await deleteMessage(
+        {
+          config: join(dir, "missing.toml"),
+          channelId: "ch-1",
+          messageId: "msg-1",
+        },
+        executor,
+        probe
+      );
+
+      expect(executor).toHaveBeenCalledWith("", "ch-1", "msg-1");
     });
   });
 
@@ -480,6 +554,26 @@ describe("messages commands", () => {
       );
 
       expect(lines).toHaveLength(0);
+    });
+
+    test("uses IPC path without loading config when daemon is available", async () => {
+      const executor = mock(() => Promise.resolve());
+      const probe = mock(() =>
+        Promise.resolve({ available: true, socketPath: "socket" })
+      );
+
+      await reactMessage(
+        {
+          config: join(dir, "missing.toml"),
+          channelId: "ch-1",
+          messageId: "msg-1",
+          emoji: "\u{1F44D}",
+        },
+        executor,
+        probe
+      );
+
+      expect(executor).toHaveBeenCalledWith("", "ch-1", "msg-1", "\u{1F44D}");
     });
   });
 
@@ -811,6 +905,37 @@ describe("messages commands", () => {
 
       expect(lines).toHaveLength(0);
     });
+
+    test("uses IPC path without loading config when daemon is available", async () => {
+      const executor = mock(() => Promise.resolve([]));
+      const probe = mock(() =>
+        Promise.resolve({ available: true, socketPath: "socket" })
+      );
+
+      await searchMessages(
+        {
+          config: join(dir, "missing.toml"),
+          guildId: "guild-1",
+          content: "hello",
+          authorIds: [],
+          channelIds: [],
+          limit: 25,
+          offset: 0,
+        },
+        executor,
+        probe
+      );
+
+      expect(executor).toHaveBeenCalledWith("", "guild-1", {
+        content: "hello",
+        authorIds: [],
+        authorType: undefined,
+        channelIds: [],
+        has: undefined,
+        limit: 25,
+        offset: 0,
+      });
+    });
   });
 
   // --- recentMessages ---
@@ -954,6 +1079,34 @@ describe("messages commands", () => {
       );
 
       expect(lines).toHaveLength(0);
+    });
+
+    test("uses IPC path without loading config when daemon is available", async () => {
+      const executor = mock(() => Promise.resolve([]));
+      const resolver: GuildResolverFn = mock((_token, configGuild, cliGuild) =>
+        Promise.resolve(cliGuild ?? configGuild ?? "resolved-guild")
+      );
+      const probe = mock(() =>
+        Promise.resolve({ available: true, socketPath: "socket" })
+      );
+
+      await recentMessages(
+        {
+          config: join(dir, "missing.toml"),
+          guildId: undefined,
+          channelIds: [],
+          limit: 50,
+        },
+        executor,
+        resolver,
+        probe
+      );
+
+      expect(resolver).toHaveBeenCalledWith("", undefined, undefined);
+      expect(executor).toHaveBeenCalledWith("", "resolved-guild", {
+        channelIds: [],
+        limit: 50,
+      });
     });
 
     // --- Guild resolution tests ---

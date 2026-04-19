@@ -13,6 +13,14 @@ export interface Config {
   wildcardHook?: string;
 }
 
+export interface ConfigMetadata {
+  channels: Map<string, ChannelConfig>;
+  configDir: string;
+  configPath: string;
+  defaultGuild?: string;
+  wildcardHook?: string;
+}
+
 export interface HookInput {
   message: {
     id: string;

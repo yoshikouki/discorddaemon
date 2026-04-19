@@ -12,6 +12,12 @@ The design principle: **a foundation model that knows the Discord API should pre
 
 In v1, each CLI command establishes a one-shot Discord gateway connection (same pattern as `ddd channels`). This is pragmatic for the current usage. In v2 (per roadmap.md), CLI commands may delegate to the running daemon via IPC, reusing the authenticated client. The CLI interface (command signatures, flags, output schemas) is designed to be transport-agnostic.
 
+The important design correction is: **choose transport first, resolve token second**.
+
+- If the daemon is reachable, message commands should use IPC and must not require the CLI to resolve a bot token locally.
+- If IPC is unavailable, the command falls back to one-shot mode and only then resolves a bot token from `-t`, `DDD_TOKEN`, or config.
+- Non-token metadata from config, such as `default_guild`, remains useful in both modes and should be loaded independently from token resolution.
+
 ---
 
 ## 1. Command Signatures
@@ -26,7 +32,10 @@ ddd messages search <guild_id> [flags]
 ddd messages recent [guild_id] [flags]
 ```
 
-All commands accept `-c / --config <path>` to specify the config file (for token resolution). No command requires the channel to be registered in the config; the config is only used for the bot token.
+All commands accept `-c / --config <path>` to specify the config file. No command requires the channel to be registered in the config.
+
+- In one-shot mode, the config is used for bot token resolution and optional metadata such as `default_guild`.
+- In IPC mode, the config is optional; the daemon already owns the authenticated Discord client. The CLI may still read metadata such as `default_guild` when present, but a missing config file must not block the command.
 
 ---
 

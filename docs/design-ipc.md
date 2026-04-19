@@ -26,6 +26,8 @@ The v2 architecture lets CLI commands talk to the running daemon over a Unix dom
 
 2. **Graceful degradation.** CLI works with or without a running daemon. If the daemon is not running, commands fall back to one-shot mode. No user action required.
 
+   This also means token resolution must be lazy. The CLI should not require a bot token up front for commands that can complete entirely over IPC with the daemon's authenticated client.
+
 3. **Zero new dependencies.** Bun provides `Bun.listen` (Unix socket server) and `Bun.connect` (Unix socket client) natively. No external libraries.
 
 4. **Executor pattern reuse.** The existing DI pattern in `src/commands/messages.ts` (e.g., `executor: MessageListExecutor = defaultListExecutor`) is the migration path. Hybrid executors slot in as new defaults.
@@ -138,7 +140,7 @@ This is deliberately simpler than JSON-RPC. No version field, no error codes, no
 | `messages/search` | `{ guildId, content?, authorIds, ... }` | `MessageInfo[]` |
 | `messages/recent` | `{ guildId?, channelIds, limit }` | `MessageInfo[]` |
 
-Note: `token` is not included in most params. The daemon already has a token from its config. The exception is `channels/list`, which accepts an optional token override to match the CLI's `--token` flag behavior.
+Note: `token` is not included in most params. The daemon already has a token from its config. The exception is `channels/list`, which accepts an optional token override to match the CLI's `--token` flag behavior. Message operations should therefore determine whether IPC is available before attempting local token resolution.
 
 ### 3.3 Daemon IPC Server
 
