@@ -13,6 +13,7 @@ import {
   hybridSearchExecutor,
   hybridSendExecutor,
 } from "../ipc/executors";
+import { probeDaemon } from "../ipc/probe";
 import {
   buildMessageInfo,
   buildMessageInfoFromRaw,
@@ -389,7 +390,8 @@ export async function sendMessage(
     content?: string;
   },
   executor: MessageSendExecutor = hybridSendExecutor,
-  stdinReader: () => Promise<string | undefined> = readStdin
+  stdinReader: () => Promise<string | undefined> = readStdin,
+  probe: typeof probeDaemon = probeDaemon
 ): Promise<void> {
   let content = args.content;
   if (content === undefined) {
@@ -404,8 +406,12 @@ export async function sendMessage(
     throw new Error("Content must not be empty");
   }
 
-  const config = await loadConfig(args.config);
-  const message = await executor(config.token, args.channelId, content);
+  const probeResult = await probe();
+  const token = probeResult.available
+    ? ""
+    : (await loadConfig(args.config)).token;
+
+  const message = await executor(token, args.channelId, content);
   console.log(JSON.stringify(message));
 }
 

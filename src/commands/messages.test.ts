@@ -185,11 +185,15 @@ describe("messages commands", () => {
       const msg = fakeMessage();
       const executor = mock(() => Promise.resolve(msg));
       const stdinReader = mock(() => Promise.resolve(undefined));
+      const probe = mock(() =>
+        Promise.resolve({ available: false, socketPath: "socket" })
+      );
 
       await sendMessage(
         { config: configPath, channelId: "ch-1", content: "hello" },
         executor,
-        stdinReader
+        stdinReader,
+        probe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "ch-1", "hello");
@@ -201,11 +205,15 @@ describe("messages commands", () => {
       const msg = fakeMessage();
       const executor = mock(() => Promise.resolve(msg));
       const stdinReader = mock(() => Promise.resolve("from stdin"));
+      const probe = mock(() =>
+        Promise.resolve({ available: false, socketPath: "socket" })
+      );
 
       await sendMessage(
         { config: configPath, channelId: "ch-1" },
         executor,
-        stdinReader
+        stdinReader,
+        probe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "ch-1", "from stdin");
@@ -215,11 +223,15 @@ describe("messages commands", () => {
       const msg = fakeMessage();
       const executor = mock(() => Promise.resolve(msg));
       const stdinReader = mock(() => Promise.resolve("from stdin"));
+      const probe = mock(() =>
+        Promise.resolve({ available: false, socketPath: "socket" })
+      );
 
       await sendMessage(
         { config: configPath, channelId: "ch-1", content: "from flag" },
         executor,
-        stdinReader
+        stdinReader,
+        probe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "ch-1", "from flag");
@@ -229,12 +241,16 @@ describe("messages commands", () => {
     test("rejects when no content provided", async () => {
       const executor = mock(() => Promise.resolve(fakeMessage()));
       const stdinReader = mock(() => Promise.resolve(undefined));
+      const probe = mock(() =>
+        Promise.resolve({ available: false, socketPath: "socket" })
+      );
 
       await expect(
         sendMessage(
           { config: configPath, channelId: "ch-1" },
           executor,
-          stdinReader
+          stdinReader,
+          probe
         )
       ).rejects.toThrow("Content required: use --content or pipe to stdin");
     });
@@ -242,12 +258,16 @@ describe("messages commands", () => {
     test("rejects empty content after trim", async () => {
       const executor = mock(() => Promise.resolve(fakeMessage()));
       const stdinReader = mock(() => Promise.resolve(undefined));
+      const probe = mock(() =>
+        Promise.resolve({ available: false, socketPath: "socket" })
+      );
 
       await expect(
         sendMessage(
           { config: configPath, channelId: "ch-1", content: "   " },
           executor,
-          stdinReader
+          stdinReader,
+          probe
         )
       ).rejects.toThrow("Content must not be empty");
     });
@@ -255,15 +275,44 @@ describe("messages commands", () => {
     test('rejects --content "" as empty instead of falling to stdin', async () => {
       const executor = mock(() => Promise.resolve(fakeMessage()));
       const stdinReader = mock(() => Promise.resolve("from stdin"));
+      const probe = mock(() =>
+        Promise.resolve({ available: false, socketPath: "socket" })
+      );
 
       await expect(
         sendMessage(
           { config: configPath, channelId: "ch-1", content: "" },
           executor,
-          stdinReader
+          stdinReader,
+          probe
         )
       ).rejects.toThrow("Content must not be empty");
       expect(stdinReader).not.toHaveBeenCalled();
+    });
+
+    test("uses IPC path without loading config when daemon is available", async () => {
+      const msg = fakeMessage({ id: "msg-ipc" });
+      const executor = mock(() => Promise.resolve(msg));
+      const stdinReader = mock(() => Promise.resolve(undefined));
+      const probe = mock(() =>
+        Promise.resolve({ available: true, socketPath: "socket" })
+      );
+
+      await sendMessage(
+        {
+          config: join(dir, "missing.toml"),
+          channelId: "ch-1",
+          content: "hello via ipc",
+        },
+        executor,
+        stdinReader,
+        probe
+      );
+
+      expect(executor).toHaveBeenCalledWith("", "ch-1", "hello via ipc");
+      expect(stdinReader).not.toHaveBeenCalled();
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0]).id).toBe("msg-ipc");
     });
   });
 
