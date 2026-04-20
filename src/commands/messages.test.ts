@@ -37,6 +37,9 @@ describe("messages commands", () => {
   let configPath: string;
   const originalLog = console.log;
   let lines: string[];
+  const unavailableProbe = mock(() =>
+    Promise.resolve({ available: false, socketPath: "socket" })
+  );
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "ddd-messages-"));
@@ -87,7 +90,8 @@ describe("messages commands", () => {
           limit: 10,
           before: "snap-1",
         },
-        executor
+        executor,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "ch-1", {
@@ -103,7 +107,8 @@ describe("messages commands", () => {
 
       await listMessages(
         { config: configPath, channelId: "ch-1", limit: 50 },
-        executor
+        executor,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "ch-1", {
@@ -352,7 +357,8 @@ describe("messages commands", () => {
           content: "updated",
         },
         executor,
-        stdinReader
+        stdinReader,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith(
@@ -374,7 +380,8 @@ describe("messages commands", () => {
       await editMessage(
         { config: configPath, channelId: "ch-1", messageId: "msg-1" },
         executor,
-        stdinReader
+        stdinReader,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith(
@@ -479,7 +486,8 @@ describe("messages commands", () => {
 
       await deleteMessage(
         { config: configPath, channelId: "ch-1", messageId: "msg-1" },
-        executor
+        executor,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "ch-1", "msg-1");
@@ -529,7 +537,8 @@ describe("messages commands", () => {
           messageId: "msg-1",
           emoji: "\u{1F44D}",
         },
-        executor
+        executor,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith(
@@ -624,7 +633,8 @@ describe("messages commands", () => {
           limit: 10,
           offset: 50,
         },
-        executor
+        executor,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
@@ -651,7 +661,8 @@ describe("messages commands", () => {
           limit: 25,
           offset: 0,
         },
-        executor
+        executor,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
@@ -873,7 +884,8 @@ describe("messages commands", () => {
           limit: 25,
           offset: 0,
         },
-        executor
+        executor,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
@@ -984,7 +996,8 @@ describe("messages commands", () => {
           limit: 75,
         },
         executor,
-        stubResolver
+        stubResolver,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
@@ -1004,7 +1017,8 @@ describe("messages commands", () => {
           limit: 50,
         },
         executor,
-        stubResolver
+        stubResolver,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "guild-1", {
@@ -1129,7 +1143,8 @@ describe("messages commands", () => {
           limit: 50,
         },
         executor,
-        resolver
+        resolver,
+        unavailableProbe
       );
 
       expect(resolver).toHaveBeenCalledWith(
@@ -1160,7 +1175,8 @@ describe("messages commands", () => {
           limit: 50,
         },
         executor,
-        resolver
+        resolver,
+        unavailableProbe
       );
 
       expect(resolver).toHaveBeenCalledWith(
@@ -1187,7 +1203,8 @@ describe("messages commands", () => {
           limit: 50,
         },
         executor,
-        resolver
+        resolver,
+        unavailableProbe
       );
 
       expect(executor).toHaveBeenCalledWith("fake-token", "auto-guild", {

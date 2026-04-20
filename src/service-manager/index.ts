@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -117,6 +118,64 @@ async function defaultRunCommand(args: string[]): Promise<CommandResult> {
   return { exitCode, stderr, stdout };
 }
 
+function getSystemdUserEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  const uid = process.getuid?.();
+  const runtimeDir =
+    process.env.XDG_RUNTIME_DIR?.trim() ||
+    (uid == null ? "" : `/run/user/${uid}`);
+
+  if (runtimeDir && existsSync(runtimeDir)) {
+    env.XDG_RUNTIME_DIR = runtimeDir;
+    const busPath = `${runtimeDir}/bus`;
+    if (existsSync(busPath)) {
+      env.DBUS_SESSION_BUS_ADDRESS =
+        process.env.DBUS_SESSION_BUS_ADDRESS?.trim() || `unix:path=${busPath}`;
+    }
+  }
+
+  return env;
+}
+
+async function runSystemdUserCommand(args: string[]): Promise<CommandResult> {
+  const proc = Bun.spawn(args, {
+    env: {
+      ...process.env,
+      ...getSystemdUserEnv(),
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  const stdoutPromise = proc.stdout
+    ? new Response(proc.stdout).text()
+    : Promise.resolve("");
+  const stderrPromise = proc.stderr
+    ? new Response(proc.stderr).text()
+    : Promise.resolve("");
+  const [stdout, stderr, exitCode] = await Promise.all([
+    stdoutPromise,
+    stderrPromise,
+    proc.exited,
+  ]);
+  return { exitCode, stderr, stdout };
+}
+
+function runSystemdUserCommandSync(args: string[]): CommandResult {
+  const proc = Bun.spawnSync(args, {
+    env: {
+      ...process.env,
+      ...getSystemdUserEnv(),
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  return {
+    exitCode: proc.exitCode,
+    stderr: proc.stderr.toString(),
+    stdout: proc.stdout.toString(),
+  };
+}
+
 function commandFailure(args: string[], result: CommandResult): Error {
   const output = result.stderr.trim() || result.stdout.trim() || "no output";
   return new Error(`${args.join(" ")} failed (${result.exitCode}): ${output}`);
@@ -166,6 +225,9 @@ export function renderSystemdUserUnit(): string {
     `Environment=HOME=${process.env.HOME ?? homedir()}`,
   ];
 
+  if (process.env.DDD_TOKEN?.trim()) {
+    lines.push(`Environment=DDD_TOKEN=${process.env.DDD_TOKEN}`);
+  }
   if (process.env.XDG_CONFIG_HOME?.trim()) {
     lines.push(`Environment=XDG_CONFIG_HOME=${process.env.XDG_CONFIG_HOME}`);
   }
@@ -201,6 +263,15 @@ export function renderLaunchdPlist(): string {
     "  </array>",
     "  <key>WorkingDirectory</key>",
     `  <string>${xmlEscape(PACKAGE_ROOT)}</string>`,
+    ...(process.env.DDD_TOKEN?.trim()
+      ? [
+          "  <key>EnvironmentVariables</key>",
+          "  <dict>",
+          "    <key>DDD_TOKEN</key>",
+          `    <string>${xmlEscape(process.env.DDD_TOKEN)}</string>`,
+          "  </dict>",
+        ]
+      : []),
     "  <key>KeepAlive</key>",
     "  <true/>",
     "  <key>RunAtLoad</key>",
@@ -287,7 +358,7 @@ function createManagedServiceManager(
   }
 
   async function systemdActive(): Promise<boolean> {
-    const result = await (deps.runCommand ?? defaultRunCommand)([
+    const result = await (deps.runCommand ?? runSystemdUserCommand)([
       "systemctl",
       "--user",
       "is-active",
@@ -316,10 +387,14 @@ function createManagedServiceManager(
           renderSystemdUserUnit(),
           "utf8"
         );
-        await runCheckedCommand(["systemctl", "--user", "daemon-reload"], deps);
+        await runCheckedCommand(["systemctl", "--user", "daemon-reload"], {
+          runCommand: deps.runCommand ?? runSystemdUserCommand,
+        });
         await runCheckedCommand(
           ["systemctl", "--user", "enable", SYSTEMD_UNIT_NAME],
-          deps
+          {
+            runCommand: deps.runCommand ?? runSystemdUserCommand,
+          }
         );
         return;
       }
@@ -340,7 +415,9 @@ function createManagedServiceManager(
       if (kind === "systemd-user") {
         await runCheckedCommand(
           ["systemctl", "--user", "start", SYSTEMD_UNIT_NAME],
-          deps
+          {
+            runCommand: deps.runCommand ?? runSystemdUserCommand,
+          }
         );
         return;
       }
@@ -412,7 +489,9 @@ function createManagedServiceManager(
       if (kind === "systemd-user") {
         await runCheckedCommand(
           ["systemctl", "--user", "stop", SYSTEMD_UNIT_NAME],
-          deps
+          {
+            runCommand: deps.runCommand ?? runSystemdUserCommand,
+          }
         );
         return;
       }
@@ -441,15 +520,21 @@ function createManagedServiceManager(
         if (active) {
           await runCheckedCommand(
             ["systemctl", "--user", "stop", SYSTEMD_UNIT_NAME],
-            deps
+            {
+              runCommand: deps.runCommand ?? runSystemdUserCommand,
+            }
           );
         }
         await runCheckedCommand(
           ["systemctl", "--user", "disable", SYSTEMD_UNIT_NAME],
-          deps
+          {
+            runCommand: deps.runCommand ?? runSystemdUserCommand,
+          }
         );
         await rm(fileLayout.installPath, { force: true });
-        await runCheckedCommand(["systemctl", "--user", "daemon-reload"], deps);
+        await runCheckedCommand(["systemctl", "--user", "daemon-reload"], {
+          runCommand: deps.runCommand ?? runSystemdUserCommand,
+        });
         return;
       }
 
@@ -471,10 +556,25 @@ function createManagedServiceManager(
   };
 }
 
+export function canUseSystemdUserManager(
+  runCommandSync: (args: string[]) => CommandResult = runSystemdUserCommandSync
+): boolean {
+  const result = runCommandSync(["systemctl", "--user", "show-environment"]);
+  return result.exitCode === 0;
+}
+
 export function resolveSupportedServiceManager(
   context: ServiceManagerContextImpl = getDefaultServiceManagerContext()
 ): Promise<ServiceManager | null> {
   const detected = detectServiceManagerImpl(context);
+  if (
+    detected.kind === "legacy" &&
+    context.platform === "linux" &&
+    canUseSystemdUserManager()
+  ) {
+    return Promise.resolve(createManagedServiceManager("systemd-user"));
+  }
+
   if (detected.kind === "legacy") {
     return Promise.resolve(null);
   }

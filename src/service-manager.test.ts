@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  canUseSystemdUserManager,
   detectServiceManager,
   listServiceManagers,
   renderLaunchdPlist,
@@ -35,13 +36,30 @@ describe("service-manager detection", () => {
     expect(manager?.kind).toBe("systemd-user");
   });
 
-  test("resolveServiceManager returns null until a managed service is installed", async () => {
+  test("resolveServiceManager returns null when no managed backend is available", async () => {
     const manager = await resolveServiceManager({
-      platform: "linux",
-      env: { INVOCATION_ID: "abc" },
+      platform: "freebsd",
+      env: {},
     });
 
     expect(manager).toBeNull();
+  });
+
+  test("canUseSystemdUserManager is true when systemctl --user is reachable", () => {
+    expect(
+      canUseSystemdUserManager(() => ({
+        exitCode: 0,
+        stderr: "",
+        stdout: "XDG_RUNTIME_DIR=/run/user/1000",
+      }))
+    ).toBe(true);
+    expect(
+      canUseSystemdUserManager(() => ({
+        exitCode: 1,
+        stderr: "failed",
+        stdout: "",
+      }))
+    ).toBe(false);
   });
 
   test("prefers launchd on macOS", () => {
