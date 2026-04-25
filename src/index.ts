@@ -18,7 +18,10 @@ Commands:
   install-service                                        Install user service files
   uninstall-service                                      Remove user service files
   init                                                   Scaffold ~/.config/ddd/ config and hooks
-  channels [-c path] [-t token]                          List available Discord channels
+  channels [list] [-c path] [-t token]                   List available Discord channels
+  channels create <name> --guild-id <guild_id> [flags]   Create a text or announcement channel
+  channels edit <channel_id> [flags]                     Edit a text or announcement channel
+  channels delete <channel_id> [--reason text]           Delete a text or announcement channel
   messages list <channel_id> [-n limit]                  Fetch messages from a channel
   messages send <channel_id> [-m content]                Send a message to a channel
   messages edit <channel_id> <message_id> [-m content]   Edit a message
@@ -68,17 +71,26 @@ function main(): void {
       initCommand().catch(fatal);
       break;
     case "channels": {
-      const { values: channelsValues } = parseArgs({
+      const { values: channelsValues, positionals } = parseArgs({
         args: process.argv.slice(3),
         options: {
+          "clear-parent": { type: "boolean" },
           config: { type: "string", short: "c" },
+          "guild-id": { type: "string" },
+          name: { type: "string" },
+          "no-nsfw": { type: "boolean" },
+          nsfw: { type: "boolean" },
+          "parent-id": { type: "string" },
+          position: { type: "string" },
+          reason: { type: "string" },
           token: { type: "string", short: "t" },
+          topic: { type: "string" },
+          type: { type: "string" },
         },
+        allowNegative: true,
+        allowPositionals: true,
       });
-      channelsCommand({
-        config: channelsValues.config,
-        token: channelsValues.token,
-      }).catch(fatal);
+      channelsCommand(positionals, channelsValues).catch(fatal);
       break;
     }
     case "messages": {

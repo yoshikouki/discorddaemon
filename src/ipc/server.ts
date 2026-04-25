@@ -4,7 +4,14 @@ import type { Socket } from "bun";
 import type { Client } from "discord.js";
 import {
   type ChannelInfo,
-  TEXT_CHANNEL_TYPES,
+  createChannelImpl,
+  deleteChannelImpl,
+  editChannelImpl,
+  hasEditChannelChanges,
+  LISTABLE_CHANNEL_TYPES,
+  parseCreateType,
+  parsePosition,
+  sortChannels,
   toChannelInfo,
 } from "../commands/channels";
 import {
@@ -30,6 +37,9 @@ import {
   validateSearchFilters,
 } from "../validators";
 import type {
+  ChannelsCreateParams,
+  ChannelsDeleteParams,
+  ChannelsEditParams,
   ChannelsListParams,
   GuildResolveParams,
   IpcRequest,
@@ -261,6 +271,19 @@ export class IpcServer {
       case "channels/list":
         return this.handleChannelsList(request.params as ChannelsListParams);
 
+      case "channels/create":
+        return this.handleChannelsCreate(
+          request.params as ChannelsCreateParams
+        );
+
+      case "channels/edit":
+        return this.handleChannelsEdit(request.params as ChannelsEditParams);
+
+      case "channels/delete":
+        return this.handleChannelsDelete(
+          request.params as ChannelsDeleteParams
+        );
+
       default:
         throw new Error(`Unknown method: ${request.method}`);
     }
@@ -399,27 +422,73 @@ export class IpcServer {
     return { guildId: resolveGuildFromCache(this.client.guilds.cache) };
   }
 
-  private handleChannelsList(_params: ChannelsListParams) {
+  private async handleChannelsList(_params: ChannelsListParams) {
     const channels: ChannelInfo[] = [];
 
     for (const guild of this.client.guilds.cache.values()) {
+      const seen = new Set<string>();
+
       for (const channel of guild.channels.cache.values()) {
-        if (!TEXT_CHANNEL_TYPES.has(channel.type)) {
+        if (!LISTABLE_CHANNEL_TYPES.has(channel.type)) {
           continue;
         }
+        seen.add(channel.id);
         const pos = "position" in channel ? (channel.position as number) : null;
         channels.push(toChannelInfo(guild, channel, pos));
       }
+
+      const activeThreads = guild.channels.fetchActiveThreads;
+      if (typeof activeThreads !== "function") {
+        continue;
+      }
+
+      const { threads } = await activeThreads.call(guild.channels);
+      for (const thread of threads.values()) {
+        if (
+          !(LISTABLE_CHANNEL_TYPES.has(thread.type) && !seen.has(thread.id))
+        ) {
+          continue;
+        }
+        channels.push(toChannelInfo(guild, thread, null));
+      }
     }
 
-    channels.sort(
-      (a, b) =>
-        a.guild_name.localeCompare(b.guild_name) ||
-        (a.position ?? Number.MAX_SAFE_INTEGER) -
-          (b.position ?? Number.MAX_SAFE_INTEGER) ||
-        a.channel_name.localeCompare(b.channel_name)
+    return sortChannels(channels);
+  }
+
+  private handleChannelsCreate(params: ChannelsCreateParams) {
+    validateRequired(params.guildId, "guildId is required");
+    validateRequired(params.name, "name is required");
+
+    return createChannelImpl(this.client, {
+      ...params,
+      type: parseCreateType(params.type),
+      position: parsePosition(params.position),
+    });
+  }
+
+  private handleChannelsEdit(params: ChannelsEditParams) {
+    validateRequired(params.channelId, "channelId is required");
+    validateMutuallyExclusive(
+      { parentId: params.parentId, clearParent: params.clearParent },
+      ["parentId", "clearParent"],
+      "--parent-id and --clear-parent are mutually exclusive"
     );
 
-    return channels;
+    const options = {
+      ...params,
+      position: parsePosition(params.position),
+    };
+
+    if (!hasEditChannelChanges(options)) {
+      throw new Error("At least one field to edit is required");
+    }
+
+    return editChannelImpl(this.client, options);
+  }
+
+  private handleChannelsDelete(params: ChannelsDeleteParams) {
+    validateRequired(params.channelId, "channelId is required");
+    return deleteChannelImpl(this.client, params);
   }
 }

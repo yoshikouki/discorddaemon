@@ -132,6 +132,9 @@ This is deliberately simpler than JSON-RPC. No version field, no error codes, no
 | `daemon/info` | `{}` | `{ uptime: number, pid: number, tokenFingerprint: string }` |
 | `guild/resolve` | `{ channelId?: string }` | `{ guildId: string }` |
 | `channels/list` | `{ token?: string }` | `ChannelInfo[]` |
+| `channels/create` | `{ guildId, name, type, parentId?, topic?, position?, nsfw?, reason? }` | `ChannelInfo` |
+| `channels/edit` | `{ channelId, name?, topic?, parentId?, clearParent?, position?, nsfw?, reason? }` | `ChannelInfo` |
+| `channels/delete` | `{ channelId, reason? }` | `null` |
 | `messages/list` | `{ channelId, limit, before?, after?, around? }` | `MessageInfo[]` |
 | `messages/send` | `{ channelId, content }` | `MessageInfo` |
 | `messages/edit` | `{ channelId, messageId, content }` | `MessageInfo` |
@@ -140,7 +143,9 @@ This is deliberately simpler than JSON-RPC. No version field, no error codes, no
 | `messages/search` | `{ guildId, content?, authorIds, ... }` | `MessageInfo[]` |
 | `messages/recent` | `{ guildId?, channelIds, limit }` | `MessageInfo[]` |
 
-Note: `token` is not included in most params. The daemon already has a token from its config. The exception is `channels/list`, which accepts an optional token override to match the CLI's `--token` flag behavior. Message operations should therefore determine whether IPC is available before attempting local token resolution.
+Note: `token` is not included in most params. The daemon already has a token from its config. Channel and message operations should therefore determine whether IPC is available before attempting local token resolution.
+
+Channel mutation is intentionally narrow: only text and announcement channels are manageable. `channels/list` may show other text-like channel types such as threads, forums, and media channels, but those are marked with `manageable: false` and rejected by `channels/edit` and `channels/delete`.
 
 ### 3.3 Daemon IPC Server
 

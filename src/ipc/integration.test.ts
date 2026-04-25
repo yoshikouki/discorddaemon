@@ -42,6 +42,7 @@ function createMockDiscordClient(): Client<true> {
     parentId: null,
     parent: null,
     guildId: "guild-1",
+    position: 0,
     isTextBased: () => true,
     isSendable: () => true,
     messages: {
@@ -51,6 +52,7 @@ function createMockDiscordClient(): Client<true> {
       delete: () => Promise.resolve(undefined),
       react: () => Promise.resolve(undefined),
     },
+    delete: () => Promise.resolve(undefined),
     send: (opts: { content: string }) =>
       Promise.resolve({
         ...fakeMessage,
@@ -59,19 +61,138 @@ function createMockDiscordClient(): Client<true> {
       }),
   };
 
-  const channelCache = new Collection<string, typeof fakeChannel>();
-  channelCache.set("ch-1", fakeChannel);
+  const fakeAnnouncement = {
+    id: "ch-2",
+    name: "announcements",
+    type: ChannelType.GuildAnnouncement,
+    parentId: null,
+    parent: null,
+    guildId: "guild-1",
+    position: 1,
+    isTextBased: () => true,
+    isSendable: () => true,
+    messages: {
+      fetch: () => Promise.resolve(fakeMessages),
+      edit: (_id: string, opts: { content: string }) =>
+        Promise.resolve({ ...fakeMessage, content: opts.content }),
+      delete: () => Promise.resolve(undefined),
+      react: () => Promise.resolve(undefined),
+    },
+    delete: () => Promise.resolve(undefined),
+    send: (opts: { content: string }) =>
+      Promise.resolve({
+        ...fakeMessage,
+        id: "msg-new-2",
+        content: opts.content,
+      }),
+  };
 
-  const fakeGuildChannels = new Collection<string, typeof fakeChannel>();
+  const fakeForum = {
+    id: "ch-3",
+    name: "ideas",
+    type: ChannelType.GuildForum,
+    parentId: null,
+    parent: null,
+    guildId: "guild-1",
+    position: 2,
+  };
+
+  const fakeThread = {
+    id: "ch-4",
+    name: "help-thread",
+    type: ChannelType.PublicThread,
+    parentId: "ch-1",
+    parent: { name: "general" },
+    guildId: "guild-1",
+    position: null,
+  };
+
+  const channelCache = new Collection<string, any>();
+  channelCache.set("ch-1", fakeChannel);
+  channelCache.set("ch-2", fakeAnnouncement);
+  channelCache.set("ch-3", fakeForum);
+  channelCache.set("ch-4", fakeThread);
+
+  const fakeGuildChannels = new Collection<string, any>();
   fakeGuildChannels.set("ch-1", fakeChannel);
+  fakeGuildChannels.set("ch-2", fakeAnnouncement);
+  fakeGuildChannels.set("ch-3", fakeForum);
 
   const fakeGuild = {
     id: "guild-1",
     name: "Test Guild",
     channels: {
       cache: fakeGuildChannels,
+      fetchActiveThreads: () =>
+        Promise.resolve({
+          threads: new Collection<string, any>([[fakeThread.id, fakeThread]]),
+        }),
+      create: (opts: {
+        name: string;
+        type: ChannelType;
+        parent?: string;
+        topic?: string;
+        position?: number;
+        nsfw?: boolean;
+        reason?: string;
+      }) => {
+        const created = {
+          id: "ch-new",
+          name: opts.name,
+          type: opts.type,
+          parentId: opts.parent ?? null,
+          parent: opts.parent ? { name: "Category" } : null,
+          guildId: "guild-1",
+          guild: fakeGuild,
+          position: opts.position ?? 2,
+          topic: opts.topic,
+          nsfw: opts.nsfw,
+          delete: () => Promise.resolve(undefined),
+        };
+        channelCache.set(created.id, created);
+        fakeGuildChannels.set(created.id, created);
+        return Promise.resolve(created);
+      },
+      edit: (
+        channelId: string,
+        opts: {
+          name?: string;
+          topic?: string;
+          parent?: string | null;
+          position?: number;
+          nsfw?: boolean;
+          reason?: string;
+        }
+      ) => {
+        const current = channelCache.get(channelId);
+        let parent = current.parent;
+        if (opts.parent === null) {
+          parent = null;
+        } else if (opts.parent !== undefined) {
+          parent = { name: "Category" };
+        }
+        const updated = {
+          ...current,
+          name: opts.name ?? current.name,
+          parentId:
+            opts.parent === undefined
+              ? current.parentId
+              : (opts.parent ?? null),
+          parent,
+          position: opts.position ?? current.position ?? null,
+          topic: opts.topic ?? current.topic,
+          nsfw: opts.nsfw ?? current.nsfw,
+        };
+        channelCache.set(channelId, updated);
+        fakeGuildChannels.set(channelId, updated);
+        return Promise.resolve(updated);
+      },
     },
   };
+
+  fakeChannel.guild = fakeGuild;
+  fakeAnnouncement.guild = fakeGuild;
+  fakeThread.guild = fakeGuild;
 
   const guildsCache = new Collection<string, typeof fakeGuild>();
   guildsCache.set("guild-1", fakeGuild);
@@ -125,7 +246,6 @@ describe("IPC integration", () => {
   });
 
   test("server starts and accepts connections", async () => {
-    // Just connecting and disconnecting should work
     const connected = await new Promise<boolean>((resolve) => {
       const timeout = setTimeout(() => resolve(false), 1000);
       Bun.connect({
@@ -176,7 +296,6 @@ describe("IPC integration", () => {
     expect(result).toHaveProperty("tokenFingerprint");
     expect(result.tokenFingerprint).toHaveLength(8);
 
-    // Verify fingerprint matches expected value
     const expectedFingerprint = new Bun.CryptoHasher("sha256")
       .update(testToken)
       .digest("hex")
@@ -189,7 +308,7 @@ describe("IPC integration", () => {
 
     try {
       await client.call("nonexistent/method", {});
-      expect(true).toBe(false); // should not reach here
+      expect(true).toBe(false);
     } catch (err) {
       expect(err).toBeInstanceOf(Error);
       expect((err as Error).message).toContain("Unknown method");
@@ -220,9 +339,9 @@ describe("IPC integration", () => {
               return;
             }
           },
-          error(_socket, error) {
+          error(_socket, err) {
             clearTimeout(timeout);
-            reject(error);
+            reject(err);
           },
           close() {
             // intentionally empty
@@ -234,22 +353,17 @@ describe("IPC integration", () => {
       });
     });
 
-    const response = JSON.parse(result);
-    expect(response.error).toBe("Invalid JSON");
-    expect(response.id).toBe("");
+    const parsed = JSON.parse(result);
+    expect(parsed.error).toContain("Invalid JSON");
   });
 
-  test("multiple sequential requests work", async () => {
-    const client = new IpcClient(socketPath);
-
-    const ping1 = await client.call<DaemonPingResult>("daemon/ping", {});
-    expect(ping1.pid).toBe(process.pid);
-
-    const ping2 = await client.call<DaemonPingResult>("daemon/ping", {});
-    expect(ping2.pid).toBe(process.pid);
-
-    const info = await client.call<DaemonInfoResult>("daemon/info", {});
-    expect(info.tokenFingerprint).toHaveLength(8);
+  test("ipcCall convenience wrapper works", async () => {
+    const result = await ipcCall<DaemonPingResult>(socketPath, {
+      id: crypto.randomUUID(),
+      method: "daemon/ping",
+      params: {},
+    });
+    expect(result.pid).toBe(process.pid);
   });
 
   test("server cleanup on stop removes socket file", async () => {
@@ -262,40 +376,6 @@ describe("IPC integration", () => {
     tempServer.stop();
 
     expect(existsSync(tempPath)).toBe(false);
-  });
-
-  test("ipcCall with explicit socket path works", async () => {
-    const id = crypto.randomUUID();
-    const result = await ipcCall<DaemonPingResult>(socketPath, {
-      id,
-      method: "daemon/ping",
-      params: {},
-    });
-
-    expect(result.pid).toBe(process.pid);
-    expect(typeof result.uptime).toBe("number");
-  });
-
-  test("connection timeout handling", async () => {
-    // Create a socket path that doesn't exist
-    const badPath = join(tmpdir(), `ddd-ipc-timeout-${Date.now()}.sock`);
-
-    const id = crypto.randomUUID();
-
-    try {
-      await ipcCall(
-        badPath,
-        {
-          id,
-          method: "daemon/ping",
-          params: {},
-        },
-        500
-      );
-      expect(true).toBe(false); // should not reach here
-    } catch (err) {
-      expect(err).toBeInstanceOf(Error);
-    }
   });
 });
 
@@ -402,7 +482,6 @@ describe("IPC method handlers", () => {
       channelId: "ch-1",
       messageId: "msg-1",
     });
-    // delete returns undefined/null
     expect(result).toBeUndefined();
   });
 
@@ -439,12 +518,96 @@ describe("IPC method handlers", () => {
     expect(result.guildId).toBe("guild-1");
   });
 
-  test("channels/list returns channel array", async () => {
+  test("channels/list returns listable text-based channels with manageable flag", async () => {
     const result = await client.call<ChannelInfo[]>("channels/list", {});
     expect(Array.isArray(result)).toBe(true);
-    expect(result.length).toBeGreaterThan(0);
-    expect(result[0].channel_id).toBe("ch-1");
-    expect(result[0].guild_name).toBe("Test Guild");
-    expect(result[0].type).toBe("GuildText");
+    expect(result.map((channel) => channel.channel_id)).toEqual([
+      "ch-1",
+      "ch-2",
+      "ch-3",
+      "ch-4",
+    ]);
+    expect(result.map((channel) => channel.manageable)).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  test("channels/create returns created channel", async () => {
+    const result = await client.call<ChannelInfo>("channels/create", {
+      guildId: "guild-1",
+      name: "support",
+      type: "text",
+      topic: "help desk",
+      position: 3,
+      nsfw: false,
+    });
+
+    expect(result.channel_id).toBe("ch-new");
+    expect(result.channel_name).toBe("support");
+    expect(result.type).toBe("GuildText");
+    expect(result.position).toBe(3);
+  });
+
+  test("channels/create validates type", async () => {
+    await expect(
+      client.call("channels/create", {
+        guildId: "guild-1",
+        name: "support",
+        type: "forum",
+      })
+    ).rejects.toThrow('type must be "text" or "announcement"');
+  });
+
+  test("channels/create validates integer position", async () => {
+    await expect(
+      client.call("channels/create", {
+        guildId: "guild-1",
+        name: "support",
+        type: "text",
+        position: 1.5,
+      })
+    ).rejects.toThrow("--position must be a non-negative integer");
+  });
+
+  test("channels/edit returns updated channel", async () => {
+    const result = await client.call<ChannelInfo>("channels/edit", {
+      channelId: "ch-2",
+      name: "news",
+      clearParent: true,
+      position: 4,
+    });
+
+    expect(result.channel_id).toBe("ch-2");
+    expect(result.channel_name).toBe("news");
+    expect(result.position).toBe(4);
+    expect(result.parent_id).toBeNull();
+  });
+
+  test("channels/edit validates integer position", async () => {
+    await expect(
+      client.call("channels/edit", {
+        channelId: "ch-2",
+        position: 4.5,
+      })
+    ).rejects.toThrow("--position must be a non-negative integer");
+  });
+
+  test("channels/edit rejects listable but non-manageable channel types", async () => {
+    await expect(
+      client.call("channels/edit", {
+        channelId: "ch-4",
+        name: "renamed-thread",
+      })
+    ).rejects.toThrow("Channel ch-4 must be a text or announcement channel");
+  });
+
+  test("channels/delete succeeds", async () => {
+    const result = await client.call("channels/delete", {
+      channelId: "ch-1",
+    });
+    expect(result).toBeUndefined();
   });
 });

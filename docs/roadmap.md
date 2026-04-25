@@ -27,9 +27,8 @@ The mechanism is TBD — candidates include a local socket, HTTP endpoint, or CL
 
 ## Future CLI expansion
 
-As v2 lands, the CLI grows to cover more of the Discord SDK surface:
-- Channel management (create, archive, set topic)
-- Message operations (send, edit, delete, react)
+As v2 lands, the CLI continues to cover more of the Discord SDK surface:
 - Guild queries (members, roles, permissions)
+- Additional channel operations such as archive-style workflows
 
-Each addition follows the same principle: thin wrapper, SDK naming, `--json` output.
+Each addition follows the same principle: thin wrapper, SDK naming, NDJSON output.
