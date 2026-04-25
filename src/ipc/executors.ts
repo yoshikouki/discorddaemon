@@ -1,4 +1,9 @@
-import type { ChannelInfo } from "../commands/channels";
+import type {
+  ChannelInfo,
+  CreateChannelExecutor,
+  DeleteChannelExecutor,
+  EditChannelExecutor,
+} from "../commands/channels";
 import type {
   GuildResolverFn,
   MessageDeleteExecutor,
@@ -128,6 +133,21 @@ function ipcChannelsFetcher(_token: string): Promise<ChannelInfo[]> {
   return client.call<ChannelInfo[]>("channels/list", {});
 }
 
+const ipcCreateChannelExecutor: CreateChannelExecutor = (_token, options) => {
+  const client = new IpcClient();
+  return client.call<ChannelInfo>("channels/create", options);
+};
+
+const ipcEditChannelExecutor: EditChannelExecutor = (_token, options) => {
+  const client = new IpcClient();
+  return client.call<ChannelInfo>("channels/edit", options);
+};
+
+const ipcDeleteChannelExecutor: DeleteChannelExecutor = (_token, options) => {
+  const client = new IpcClient();
+  return client.call<void>("channels/delete", options);
+};
+
 // --- IPC guild resolver ---
 
 const ipcGuildResolver: GuildResolverFn = async (
@@ -153,7 +173,12 @@ const ipcGuildResolver: GuildResolverFn = async (
 // The default executors are private in messages.ts, so we import the
 // impl functions and withDiscordClient to construct one-shot executors.
 import { GatewayIntentBits } from "discord.js";
-import { fetchDiscordChannels } from "../commands/channels";
+import {
+  createChannelImpl,
+  deleteChannelImpl,
+  editChannelImpl,
+  fetchDiscordChannels,
+} from "../commands/channels";
 import {
   deleteMessageImpl,
   editMessageImpl,
@@ -282,6 +307,39 @@ export const hybridChannelsFetcher = createHybridExecutor<
   [string],
   ChannelInfo[]
 >(ipcChannelsFetcher, fetchDiscordChannels);
+
+const oneshotCreateChannelExecutor: CreateChannelExecutor = (token, options) =>
+  withDiscordClient(token, [GatewayIntentBits.Guilds], (client) =>
+    createChannelImpl(client, options)
+  );
+
+const oneshotEditChannelExecutor: EditChannelExecutor = (token, options) =>
+  withDiscordClient(token, [GatewayIntentBits.Guilds], (client) =>
+    editChannelImpl(client, options)
+  );
+
+const oneshotDeleteChannelExecutor: DeleteChannelExecutor = (token, options) =>
+  withDiscordClient(token, [GatewayIntentBits.Guilds], (client) =>
+    deleteChannelImpl(client, options)
+  );
+
+export const hybridCreateChannelExecutor = createHybridExecutor(
+  ipcCreateChannelExecutor,
+  oneshotCreateChannelExecutor,
+  { safeToRetry: false }
+);
+
+export const hybridEditChannelExecutor = createHybridExecutor(
+  ipcEditChannelExecutor,
+  oneshotEditChannelExecutor,
+  { safeToRetry: false }
+);
+
+export const hybridDeleteChannelExecutor = createHybridExecutor(
+  ipcDeleteChannelExecutor,
+  oneshotDeleteChannelExecutor,
+  { safeToRetry: false }
+);
 
 // Guild resolver: read-only
 export const hybridGuildResolver: GuildResolverFn = createHybridExecutor<

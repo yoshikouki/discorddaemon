@@ -49,6 +49,26 @@ ddd channels   # shows channel IDs and names as NDJSON
 ddd start
 ```
 
+## Channel Management
+
+`ddd channels` lists Discord text-like channels as NDJSON. The output includes
+`manageable: true` only for channel types that `ddd` can safely edit or delete
+directly: text channels and announcement channels.
+
+```bash
+ddd channels
+ddd channels create support --guild-id 123 --topic "Help desk"
+ddd channels create news --guild-id 123 --type announcement
+ddd channels edit 456 --name support-archive --position 3 --no-nsfw
+ddd channels edit 456 --parent-id 789
+ddd channels edit 456 --clear-parent
+ddd channels delete 456 --reason "cleanup"
+```
+
+Create and edit print the affected channel as one JSON line. Delete prints
+nothing on success. If the daemon is running, these commands use its IPC client;
+otherwise they fall back to one-shot Discord connections.
+
 ## Hook Interface
 
 Hooks are **any executable**. Shell scripts, Python, Rust binaries — anything that reads stdin and writes stdout.

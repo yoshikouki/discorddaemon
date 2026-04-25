@@ -109,3 +109,30 @@ export interface MessagesRecentParams {
 export interface ChannelsListParams {
   token?: string;
 }
+
+export interface ChannelsCreateParams {
+  guildId: string;
+  name: string;
+  nsfw?: boolean;
+  parentId?: string;
+  position?: number;
+  reason?: string;
+  topic?: string;
+  type: "announcement" | "text";
+}
+
+export interface ChannelsEditParams {
+  channelId: string;
+  clearParent?: boolean;
+  name?: string;
+  nsfw?: boolean;
+  parentId?: string;
+  position?: number;
+  reason?: string;
+  topic?: string;
+}
+
+export interface ChannelsDeleteParams {
+  channelId: string;
+  reason?: string;
+}
