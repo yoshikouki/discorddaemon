@@ -83,7 +83,8 @@ describe("channelsCommand", () => {
 
   beforeEach(async () => {
     originalTokenEnv = process.env.DDD_TOKEN;
-    process.env.DDD_TOKEN = undefined;
+    // biome-ignore lint/performance/noDelete: process.env stringifies undefined in Bun 1.4.
+    delete process.env.DDD_TOKEN;
     dir = await mkdtemp(join(tmpdir(), "ddd-channels-"));
     configPath = join(dir, "ddd.toml");
     await Bun.write(configPath, '[bot]\ntoken = "fake-token"\n');
@@ -95,7 +96,8 @@ describe("channelsCommand", () => {
 
   afterEach(async () => {
     if (originalTokenEnv === undefined) {
-      process.env.DDD_TOKEN = undefined;
+      // biome-ignore lint/performance/noDelete: restore an absent environment variable.
+      delete process.env.DDD_TOKEN;
     } else {
       process.env.DDD_TOKEN = originalTokenEnv;
     }

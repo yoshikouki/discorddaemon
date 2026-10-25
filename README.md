@@ -6,7 +6,7 @@ Discord daemon with per-channel hooks. UNIX philosophy for Discord bots.
 
 ## Requirements
 
-- [Bun](https://bun.sh/) >= 1.3.10
+- [Bun](https://bun.sh/) >= 1.4.4
 
 ## Install
 
